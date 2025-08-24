@@ -6,7 +6,6 @@
   #:use-module (icnu utils log)
   #:use-module (icnu icnu)
   #:export (rewrite-pass-copy-fold!
-            rewrite-pass-AE!
             rewrite-pass-if-fold!
             rewrite-pass-const-fold!
             rewrite-pass-wire-cleanup!
@@ -25,26 +24,47 @@
     (debugf 1 "rule-AA!: attempting on ~a and ~a\n" a-name b-name)
     (let* ((a_p (cons a-name 'p)) (a_l (cons a-name 'l)) (a_r (cons a-name 'r))
            (b_p (cons b-name 'p)) (b_l (cons b-name 'l)) (b_r (cons b-name 'r))
-           (X (peer net a_r)) (F (peer net b_l)) (Y (peer net b_r)))
-      ;; Only skip when explicitly marked as pass-through; allow merging
-      ;; even when auxiliary ports are absent so simple connected A-A pairs
-      ;; (a.p <-> b.p) are reduced.
-      (if pass-through?
-          (begin
-            (debugf 2 "rule-AA!: skipping on ~a and ~a (pass-through: ~a)\n" a-name b-name pass-through?)
-            #f)
-          (let* ((n_sym (make-fresh-name net "a"))
-                 (n_p (cons n_sym 'p)) (n_l (cons n_sym 'l)) (n_r (cons n_sym 'r)))
-            (add-node! net n_sym 'A)
-            (mark-nu! net n_sym)
-            (if F (rewire! net a_l F) (unlink-port! net a_l))
-            (when Y (rewire! net n_l Y))
-            (when X (rewire! net n_r X))
-            (rewire! net a_p n_p)
-            (delete-node! net a-name)
-            (delete-node! net b-name)
-            (debugf 1 "rule-AA!: applied on ~a and ~a, created ~a\n" a-name b-name n_sym)
-            #t)))))
+           (X (peer net a_r)) (F (peer net b_l)) (Y (peer net b_r))
+           (a-is-lit (is-literal-node? net a-name))
+           (b-is-lit (is-literal-node? net b-name)))
+      (cond
+       (pass-through?
+        (debugf 2 "rule-AA!: skipping on ~a and ~a (pass-through: ~a)\n" a-name b-name pass-through?)
+        #f)
+       ((and a-is-lit (not b-is-lit))
+        ;; a is literal, b is not. Preserve a by rewiring b's aux peers to a, then deleting b.
+        (let ((b_l_peer (peer net b_l))
+              (b_r_peer (peer net b_r)))
+          (when b_l_peer (rewire! net a_l b_l_peer))
+          (when b_r_peer (rewire! net a_r b_r_peer)))
+        (delete-node! net b-name)
+        (debugf 1 "rule-AA!: applied on ~a and ~a, preserving literal ~a\n" a-name b-name a-name)
+        #t)
+       ((and b-is-lit (not a-is-lit))
+        ;; b is literal, a is not. Preserve b by rewiring a's aux peers to b, then deleting a.
+        (let ((a_l_peer (peer net a_l))
+              (a_r_peer (peer net a_r)))
+          (when a_l_peer (rewire! net b_l a_l_peer))
+          (when a_r_peer (rewire! net b_r a_r_peer)))
+        (delete-node! net a-name)
+        (debugf 1 "rule-AA!: applied on ~a and ~a, preserving literal ~a\n" a-name b-name b-name)
+        #t)
+       (else
+        ;; Original logic for non-literals or two literals
+        (let* ((n_sym (make-fresh-name net "a"))
+               (n_p (cons n_sym 'p)) (n_l (cons n_sym 'l)) (n_r (cons n_sym 'r)))
+          (add-node! net n_sym 'A)
+          (when (or (hash-ref (net-nu-set net) a-name #f)
+                    (hash-ref (net-nu-set net) b-name #f))
+            (mark-nu! net n_sym))
+          (if F (rewire! net a_l F) (unlink-port! net a_l))
+          (when Y (rewire! net n_l Y))
+          (when X (rewire! net n_r X))
+          (rewire! net a_p n_p)
+          (delete-node! net a-name)
+          (delete-node! net b-name)
+          (debugf 1 "rule-AA!: applied on ~a and ~a, created ~a\n" a-name b-name n_sym)
+          #t))))))
 
 (define (rule-AC! net a-name c-name)
   (if (and (eq? (node-agent net a-name) 'A)
@@ -106,7 +126,9 @@
                   (not (string-prefix? "eq-" s))
                   (not (string-prefix? "lt-" s))
                   (not (string-prefix? "gt-" s))
-                  (not (string-prefix? "if-impl" s)))))))
+                  (not (string-prefix? "if-impl" s))
+                  ;; exclude common output/result node names from the heuristic
+                  (not (string-prefix? "out" s)))))))
 
 (define (get-literal-value node-name)
   "Extract a Scheme value from a literal-style node name when possible.
@@ -228,24 +250,6 @@
        pairs)
      changed?))
 
-(define (rewrite-pass-AE! net)
-  (let ((changed? #f)
-        (pairs (find-active-pairs net)))
-    (for-each
-     (lambda (pair)
-       (match pair
-         (((a . 'A) (e . 'E))
-          (when (rule-AE! net a e)
-            (debugf 1 "rule-AE!: applied on ~a and ~a\n" a e)
-            (set! changed? #t)))
-         (((e . 'E) (a . 'A))
-          (when (rule-AE! net a e)
-            (debugf 1 "rule-AE!: applied on ~a and ~a\n" a e)
-            (set! changed? #t)))
-         (_ #f)))
-     pairs)
-    changed?))
-
 (define (ensure-global-bool-node net val)
   (let ((name (if val (gensym "lit-true-") (gensym "lit-false-"))))
     (add-node! net name 'A)
@@ -275,9 +279,9 @@
                    (when (and out-ep value-source)
                      (rewire! net out-ep value-source)))
                  (when pruned-branch-ep (delete-node! net (car pruned-branch-ep)))
-                 ;; cleanup the if node and its condition copier
+                 ;; cleanup the if node. The condition copier is now part of the
+                 ;; output path and should not be deleted.
                  (delete-node! net if-name)
-                 (when cond-copy (delete-node! net cond-copy))
                  (set! changed? #t)))))))
      (all-nodes-with-agent net 'A))
     changed?))

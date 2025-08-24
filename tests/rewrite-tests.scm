@@ -106,8 +106,8 @@
     (add-node! n 'a 'A)
     (add-node! n 'e 'E)
     (link-peers! n (endpoint 'a 'p) (endpoint 'e 'p))
-    ;; Apply the AE rule via the rewrite pass
-    (assert-true (rewrite-pass-AE! n) "AE rule applied")
+    ;; Apply the AE rule via the copy-fold pass
+    (assert-true (rewrite-pass-copy-fold! n) "AE rule applied via copy-fold")
     ;; Both nodes should have been deleted
     (assert-false (node-agent n 'a) "Applicator A removed after AE")
     (assert-false (node-agent n 'e) "Eraser E removed after AE")

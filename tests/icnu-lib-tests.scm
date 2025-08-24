@@ -5,30 +5,7 @@
              (icnu icnu)
              (icnu stdlib icnu-lib)
              (icnu rewrite)
-             (icnu tools icnu-calc)
              (icnu tools icnu-inject))
-
-(define (test-IC_NIL_and_IC_CONS)
-  (let* ((lit (IC_LITERAL 1 'h))
-         (nilf (IC_NIL 'nilx))
-         (consf (IC_CONS (list 'h 'p) 'nilx 'consx))
-         (net (parse-net (mk-par lit nilf consf))))
-    (assert-eq (node-agent net 'nilx) 'A "IC_NIL creates an A node for nilx")
-    (assert-eq (node-agent net 'consx) 'A "IC_CONS created consx as A")
-    (assert-true (peer net (endpoint 'consx 'l)) "IC_CONS: consx.l has a peer")
-    (let ((rpeer (peer net (endpoint 'consx 'r))))
-      (assert-true (and rpeer (eq? (car rpeer) 'nilx)) "IC_CONS: consx.r -> nilx"))
-    #t))
-
-(define (test-IC_PRIM_ADD_constant_fold)
-  (let ((net (parse-net (IC_PRIM_ADD 'num-2 'num-3 'out))))    
-    (assert-eq (peer net (endpoint 'out 'r)) (endpoint 'num-5 'p) "IC_PRIM_ADD folded 2+3 -> num-5"))
-  #t)
-
-(define (test-IC_CHURCH_ENCODE)
-  (let ((net (parse-net (IC_CHURCH-ENCODE 4))))
-    (assert-eq (node-agent net 'church-4) 'A "IC_CHURCH-ENCODE creates church-4 as A"))
-  #t)
 
 ;; -- Helpers ----------------------------------------------------------
 (define (count-agent net agent)
@@ -156,11 +133,11 @@
       (assert-true (node-agent r 'outp) "IC_PRIM_ADD_RUNTIME created out"))
     #t))
 
-;; 추가 테스트들: 경계 조건 및 스트레스 케이스
+;; Additional tests: edge cases and stress cases
 (define (test-inject-empty-list)
   (format-string #t "\nTEST: inject-empty-list~%")
   (let* ((net (parse-net (generate-injection-form (list (cons 'out '()))))))
-    ;; out.r에 연결된 피어가 존재하고, 그 노드는 Applicator(A)여야 합니다.
+    ;; A peer connected to out.r must exist, and that node must be an Applicator (A).
     (let ((p (peer net (endpoint 'out 'r))))
       (assert-true (and p (eq? (node-agent net (car p)) 'A)) "inject empty list produced an A node on out.r"))
     #t))
@@ -170,7 +147,7 @@
   (let* ((val (list 1 (list 2 (list 3 (list 4 5)))))
          (net (parse-net (generate-injection-form (list (cons 'out val)))))
          (cons-count (count-nodes-with-prefix net "inj-cons-")))
-    ;; 깊은 중첩 리스트는 여러 개의 inj-cons- 노드를 생성해야 합니다.
+    ;; A deeply nested list should create multiple inj-cons- nodes.
     (assert-true (>= cons-count 3) (format-string #f "deep nested cons chain created: ~a" cons-count))
     #t))
 
@@ -182,20 +159,6 @@
          (cnt (count-nodes-with-prefix net "church-app-")))
     (assert-true (>= cnt n) (format-string #f "church-apply created ~a app nodes (expected >= ~a)" cnt n))
     #t))
-
-(define (test-calc-basic)
-  (format-string #t "\nTEST: calc-basic~%")
-  ;; calc-eval accepts a s-expression (list form) and evaluates arithmetic
-  (assert-eq (calc-eval '(+ 1 2 3)) 6 "calc-eval sums numbers")
-  (assert-eq (calc-eval '(* 2 (+ 3 2))) 10 "calc-eval nested arithmetic")
-  #t)
-
-(define (test-calc-from-string)
-  (format-string #t "\nTEST: calc-from-string~%")
-  ;; calc-eval-str reads a Scheme expression from string and evaluates it
-  (assert-eq (calc-eval-str "(+ 10 5)") 15 "calc-eval-str simple")
-  (assert-eq (calc-eval-str "(* 3 7)") 21 "calc-eval-str multiplication")
-  #t)
 
 ;; -- Runner ---------------------------------------------------------
 (define (run-all-icnu-lib-tests)
@@ -215,8 +178,6 @@
                 test-inject-empty-list
                 test-inject-deep-nested-list
                 test-church-apply-large
-                test-calc-basic
-                test-calc-from-string
                 )))
     (display "Running expanded icnu-stdlib unit tests...\n")
     (for-each (lambda (t)

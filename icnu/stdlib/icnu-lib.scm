@@ -217,8 +217,8 @@
          )
     (cond
      ;; church + church -> church-(n+m)
-     ((and (starts-with? s1 "church-")
-           (starts-with? s2 "church-"))
+     ((and (string-prefix? "church-" s1)
+           (string-prefix? "church-" s2))
       (let* ((n1 (string->number (substring s1 7)))
              (n2 (string->number (substring s2 7)))
              (sum (+ (if n1 n1 0) (if n2 n2 0)))
@@ -230,8 +230,8 @@
               ;; expose the computed literal on out's aux port
               ,(mk-wire res 'p out 'r)))))
      ;; num + num -> num-(n+m)
-     ((and (starts-with? s1 "num-")
-           (starts-with? s2 "num-"))
+     ((and (string-prefix? "num-" s1)
+           (string-prefix? "num-" s2))
       (let* ((n1 (string->number (substring s1 4)))
              (n2 (string->number (substring s2 4)))
              (sum (+ (if n1 n1 0) (if n2 n2 0)))

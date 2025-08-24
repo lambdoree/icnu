@@ -87,10 +87,16 @@
     ;; show-V? true -> v1 present
     (let ((pp2 (pretty-print n '((show-V? . #t)))))
       (assert-true (string-contains? (format-string #f "~a" pp2) "v1") "v1 shown when show-V?"))
-    ;; show-nu? wraps body in nu form
+    ;; show-nu? wraps body in nu form (from parsed net)
     (let* ((n2 (parse-net '(nu (x) (par (node x A)))))
            (ppn (pretty-print n2 '((show-nu? . #t)))))
-      (assert-true (string-contains? (format-string #f "~a" ppn) "nu") "pretty-print show-nu? wraps with nu"))
+      (assert-true (string-contains? (format-string #f "~a" ppn) "nu") "pretty-print show-nu? from parsed net"))
+    ;; show-nu? from programmatically marked nu
+    (let ((n3 (empty-net)))
+      (mark-nu! n3 'm)
+      (add-node! n3 'm 'A)
+      (let ((pp3 (pretty-print n3 '((show-nu? . #t)))))
+        (assert-true (string-contains? (format-string #f "~a" pp3) "nu") "pretty-print show-nu? from mark-nu!")))
     #t))
 
 (define (test-ports_and_get-ports)
@@ -185,18 +191,6 @@
         (assert-true found "copied net retains u.p link")))
     #t))
 
-(define (test-pretty-print_nu_and_order_stability)
-  (let ((n (empty-net)))
-    ;; produce some nu names and nodes
-    (mark-nu! n 'm)
-    (add-node! n 'm 'A)
-    (add-node! n 'a 'A)
-    (add-node! n 'b 'A)
-    (link-peers! n (endpoint 'a 'p) (endpoint 'b 'p))
-    (let ((pp (pretty-print n '((show-nu? . #t)))))
-      (assert-true (string-contains? (format-string #f "~a" pp) "nu") "pretty-print includes nu when requested"))
-    #t))
-
 ;; -- Runner ---------------------------------------------------------
 (define (run-all-icnu-tests)
   (let ((tests (list
@@ -214,7 +208,6 @@
 		test-unlink-by-equal-key
 		test-delete-node_cleans_links
 		test-validate_copy_isolation
-		test-pretty-print_nu_and_order_stability
 		)))
     (display "Running icnu unit tests...\n")
     (for-each (lambda (t)

@@ -12,7 +12,7 @@
 		    parse-net pretty-print
 		    ;; utilities
 		    empty-net copy-net make-fresh-name all-names node-agent endpoint valid-port?
-		    peer net-nodes net-links get-ports unlink-port!
+		    peer net-nodes net-links net-nu-set get-ports unlink-port!
 		    rewire! delete-node! all-nodes-with-agent find-active-pairs
 		    ;; runtime hooks
 		    set-link-conflict-mode!
@@ -35,11 +35,11 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define-record-type <net>
-  (make-net nodes links nu counter)
+  (make-net nodes links nu-set counter)
   net?
   (nodes net-nodes)  ;; hash name -> agent
   (links net-links)  ;; hash (cons name port) -> (cons name port)
-  (nu    net-nu)     ;; hash name -> #t
+  (nu-set net-nu-set)  ;; hash name -> #t
   (counter net-counter set-net-counter!)) ;; integer counter for fresh-name generation
 
 (define (empty-net)
@@ -53,7 +53,7 @@
    with the source."
   (let ((nn (make-hash-table))
         (ll (make-hash-table))
-        (nu (make-hash-table)))
+        (nu_copy (make-hash-table)))
     ;; copy nodes (name -> agent)
     (hash-for-each (lambda (k v) (hash-set! nn k v)) (net-nodes n))
     ;; copy links: create new cons keys/values for each link entry so that
@@ -65,9 +65,9 @@
          (hash-set! ll k2 v2)))
      (net-links n))
     ;; copy nu bindings
-    (hash-for-each (lambda (k v) (hash-set! nu k v)) (net-nu n))
+    (hash-for-each (lambda (k v) (hash-set! nu_copy k v)) (net-nu-set n))
     ;; preserve counter
-    (make-net nn ll nu (net-counter n))))
+    (make-net nn ll nu_copy (net-counter n))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; 1. Basic ops: nodes/links
@@ -217,7 +217,8 @@
   (let ((agent (node-agent n x)))
     (when agent
       (for-each (lambda (pt) (unlink-port! n (cons x pt))) (get-ports agent))
-      (hash-remove! (net-nodes n) x)))
+      (hash-remove! (net-nodes n) x)
+      (hash-remove! (net-nu-set n) x)))
   n)
 
 (define (all-nodes-with-agent net agent-type)
@@ -273,7 +274,7 @@
                            (begin (set-net-counter! n (+ i 1)) cand))))))
       (loop))))
 
-(define (mark-nu! n name) (hash-set! (net-nu n) name #t) n)
+(define (mark-nu! n name) (hash-set! (net-nu-set n) name #t) n)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; 3. Parsing surface s-expr -> net
@@ -287,13 +288,13 @@
 ;; Free names on a wire endpoint implicitly materialize as V nodes (internal).
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; `(node ...)` S-expression을 생성하는 헬퍼 함수입니다.
+;; Helper function to create a `(node ...)` S-expression.
 (define (mk-node name agent) `(node ,name ,agent))
-;; `(wire ...)` S-expression을 생성하는 헬퍼 함수입니다.
+;; Helper function to create a `(wire ...)` S-expression.
 (define (mk-wire a p b q) `(wire (,a ,p) (,b ,q)))
-;; `(par ...)` S-expression을 생성하는 헬퍼 함수입니다.
+;; Helper function to create a `(par ...)` S-expression.
 (define (mk-par . elts) `(par ,@elts))
-;; `(nu ...)` S-expression을 생성하는 헬퍼 함수입니다.
+;; Helper function to create a `(nu ...)` S-expression.
 (define (mk-nu names body) `(nu ,names ,body))
 
 (define (parse-endpoint n ep)
@@ -304,18 +305,14 @@
      (unless (valid-port? p) (error "parse: invalid port" p))
      (unless (node-agent n a)
        (let* ((s (symbol->string a))
-	      (starts-with?
-	       (lambda (str pref)
-                 (let ((ls (string-length str)) (lp (string-length pref)))
-                   (and (>= ls lp) (string=? (substring str 0 lp) pref)))))
 	      (is-literal
-	       (or (starts-with? s "inj-")
-                   (starts-with? s "lit-")
-                   (starts-with? s "num-")
-                   (starts-with? s "church-")
-                   (starts-with? s "cons-")
-                   (starts-with? s "nil-")
-                   (starts-with? s "app-")
+	       (or (string-prefix? "inj-" s)
+                   (string-prefix? "lit-" s)
+                   (string-prefix? "num-" s)
+                   (string-prefix? "church-" s)
+                   (string-prefix? "cons-" s)
+                   (string-prefix? "nil-" s)
+                   (string-prefix? "app-" s)
                    (string=? s "true")
                    (string=? s "false")))
 	      (is-qualified (string-contains? s ".")))
@@ -330,18 +327,14 @@
      (unless (valid-port? p) (error "parse: invalid port" p))
      (unless (node-agent n a)
        (let* ((s (symbol->string a))
-	      (starts-with?
-	       (lambda (str pref)
-                 (let ((ls (string-length str)) (lp (string-length pref)))
-                   (and (>= ls lp) (string=? (substring str 0 lp) pref)))))
 	      (is-literal
-	       (or (starts-with? s "inj-")
-                   (starts-with? s "lit-")
-                   (starts-with? s "num-")
-                   (starts-with? s "church-")
-                   (starts-with? s "cons-")
-                   (starts-with? s "nil-")
-                   (starts-with? s "app-")
+	       (or (string-prefix? "inj-" s)
+                   (string-prefix? "lit-" s)
+                   (string-prefix? "num-" s)
+                   (string-prefix? "church-" s)
+                   (string-prefix? "cons-" s)
+                   (string-prefix? "nil-" s)
+                   (string-prefix? "app-" s)
                    (string=? s "true")
                    (string=? s "false")))
 	      (is-qualified (string-contains? s ".")))
@@ -355,18 +348,14 @@
      (unless (valid-port? p) (error "parse: invalid port" p))
      (unless (node-agent n a)
        (let* ((s (symbol->string a))
-	      (starts-with?
-	       (lambda (str pref)
-                 (let ((ls (string-length str)) (lp (string-length pref)))
-                   (and (>= ls lp) (string=? (substring str 0 lp) pref)))))
 	      (is-literal
-	       (or (starts-with? s "inj-")
-                   (starts-with? s "lit-")
-                   (starts-with? s "num-")
-                   (starts-with? s "church-")
-                   (starts-with? s "cons-")
-                   (starts-with? s "nil-")
-                   (starts-with? s "app-")
+	       (or (string-prefix? "inj-" s)
+                   (string-prefix? "lit-" s)
+                   (string-prefix? "num-" s)
+                   (string-prefix? "church-" s)
+                   (string-prefix? "cons-" s)
+                   (string-prefix? "nil-" s)
+                   (string-prefix? "app-" s)
                    (string=? s "true")
                    (string=? s "false")))
 	      (is-qualified (string-contains? s ".")))
@@ -542,7 +531,7 @@
       (if showNu
           (let ((nu-names '()))
             (hash-for-each (lambda (nm _v) (set! nu-names (cons nm nu-names)))
-			   (net-nu net))
+			   (net-nu-set net))
             `(nu ,(reverse nu-names) ,body))
           body))))
 

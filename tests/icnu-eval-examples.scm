@@ -10,7 +10,7 @@
 
 ;; Global flag to enable/disable detailed big‑step tracing.
 ;; Set to #t when you want step‑by‑step output, otherwise keep #f for concise test logs.
-(define *trace-big-step-enabled* (make-parameter #t))
+(define *trace-big-step-enabled* (make-parameter #f))
 
 ;; -----------------------------------------------------------------
 ;; helpers
@@ -48,7 +48,6 @@
             (when (rewrite-pass-copy-fold! net) (set! changed? #t) (format-string #t "  [copy‑fold]\n"))
             (when (rewrite-pass-const-fold! net) (set! changed? #t) (format-string #t "  [const‑fold]\n"))
             (when (rewrite-pass-if-fold! net) (set! changed? #t) (format-string #t "  [if‑fold]\n"))
-            (when (rewrite-pass-A! net) (set! changed? #t) (format-string #t "  [A‑merge]\n"))
             (when (rewrite-pass-AA-merge! net) (set! changed? #t) (format-string #t "  [AA‑merge]\n"))
             (when (rewrite-pass-wire-cleanup! net) (set! changed? #t) (format-string #t "  [wire‑cleanup]\n"))
             (loop (+ i 1) changed?)))))))
@@ -73,7 +72,6 @@
     ((copy-fold) (rewrite-pass-copy-fold! net))
     ((const-fold) (rewrite-pass-const-fold! net))
     ((if-fold) (rewrite-pass-if-fold! net))
-    ((A-merge) (rewrite-pass-A! net))
     ((AA-merge) (rewrite-pass-AA-merge! net))
     ((wire-cleanup) (rewrite-pass-wire-cleanup! net))
     (else (error "unknown pass" pass-name))))
@@ -81,7 +79,7 @@
 (define (small-step-demo sexpr-str)
   (let* ((sexpr (read-sexpr-from-string sexpr-str))
          (net (parse-net sexpr))
-         (passes (list 'copy-fold 'const-fold 'if-fold 'A-merge 'AA-merge 'wire-cleanup)))
+         (passes (list 'copy-fold 'const-fold 'if-fold 'AA-merge 'wire-cleanup)))
     (format-string #t "\nSMALL-STEP DEMO: initial ~a~%" (net-summary-str net))
     (for-each
      (lambda (p)
@@ -104,7 +102,6 @@
         (when (rewrite-pass-copy-fold! net) (set! changed? #t) (format-string #t "  [big] copy-fold\n"))
         (when (rewrite-pass-const-fold! net) (set! changed? #t) (format-string #t "  [big] const-fold\n"))
         (when (rewrite-pass-if-fold! net) (set! changed? #t) (format-string #t "  [big] if-fold\n"))
-        (when (rewrite-pass-A! net) (set! changed? #t) (format-string #t "  [big] A-merge\n"))
         (when (rewrite-pass-AA-merge! net) (set! changed? #t) (format-string #t "  [big] AA-merge\n"))
         (when (rewrite-pass-wire-cleanup! net) (set! changed? #t) (format-string #t "  [big] wire-cleanup\n"))
         (if changed? (loop (+ i 1)) (values net i))))))
