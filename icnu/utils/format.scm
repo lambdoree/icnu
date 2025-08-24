@@ -23,6 +23,8 @@
                           (begin (display (car current-args) port) (loop (cddr chars) (cdr current-args)))))
                      ((#\~)
                       (begin (display #\~ port) (loop (cddr chars) current-args)))
+                     ((#\%)
+                      (begin (newline port) (loop (cddr chars) current-args)))
                      (else
                       (begin (display c port) (loop (cdr chars) current-args)))))
                  (begin (display c port) (loop (cdr chars) current-args)))))))))

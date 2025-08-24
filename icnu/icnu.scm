@@ -10,7 +10,6 @@
 	    mk-node mk-wire mk-par mk-nu
 		    ;; parse/print
 		    parse-net pretty-print
-		    ;; execution (DEPRECATED - MOVED TO cpnet/runtime)
 		    ;; utilities
 		    empty-net copy-net make-fresh-name all-names node-agent endpoint valid-port?
 		    peer net-nodes net-links get-ports unlink-port!
@@ -382,6 +381,10 @@
   (match form
     ;; surface forms
     (('node (? symbol? a) (? symbol? agent))
+     (add-node! n a agent)
+     n)
+    ;; node name quoted, agent unquoted (e.g. (node 'qual.name A))
+    (('node ('quote (? symbol? a)) (? symbol? agent))
      (add-node! n a agent)
      n)
     (('node ('quote (? symbol? a)) ('quote (? symbol? agent)))

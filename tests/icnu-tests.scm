@@ -2,7 +2,8 @@
              (icnu utils strings)
              (icnu utils assertions)
              (srfi srfi-1)
-             (icnu icnu))
+             (icnu icnu)
+	     )
 
 ;; -- Individual tests -----------------------------------------------
 (define (test-mk-helpers)
@@ -145,7 +146,7 @@
            (n2 (parse-net sex2)))
       (assert-eq (peer n2 (endpoint 'c 'p)) (endpoint 'd 'p) "parse-endpoint handles (list name port)"))
     ;; parse-endpoint should create A for qualified names and V for others
-    (let ((n3 (parse-net '(par (node qual.name A)))))
+    (let ((n3 (parse-net '(par (node 'qual.name A)))))
       ;; ensure node present
       (assert-true (node-agent n3 'qual.name) "qualified name materialized as A"))
     #t))
@@ -213,7 +214,8 @@
 		test-unlink-by-equal-key
 		test-delete-node_cleans_links
 		test-validate_copy_isolation
-		test-pretty-print_nu_and_order_stability)))
+		test-pretty-print_nu_and_order_stability
+		)))
     (display "Running icnu unit tests...\n")
     (for-each (lambda (t)
 		(format-string #t " - ~a ... " (format-string #f "~a" t))

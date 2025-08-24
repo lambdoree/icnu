@@ -5,8 +5,8 @@
   #:use-module (icnu utils format)
   #:use-module (icnu utils log)
   #:use-module (icnu icnu)
-  #:export (rewrite-pass-A!
-            rewrite-pass-copy-fold!
+  #:export (rewrite-pass-copy-fold!
+            rewrite-pass-AE!
             rewrite-pass-if-fold!
             rewrite-pass-const-fold!
             rewrite-pass-wire-cleanup!
@@ -19,11 +19,6 @@
 ;; Use a stable symbol instead of #f to avoid conflation with boolean false.
 (define *unresolved* (string->symbol "icnu-unresolved"))
 
-;;; ----------------------------------------------------------------
-;;; 재작성 규칙
-;;; ----------------------------------------------------------------
-
-;; Applicator-Applicator(AA) 상호작용 규칙을 적용합니다. 두 Applicator 노드를 하나의 새로운 Applicator로 축약합니다.
 (define (rule-AA! net a-name b-name pass-through?)
   (when (and (eq? (node-agent net a-name) 'A)
              (eq? (node-agent net b-name) 'A))
@@ -46,51 +41,50 @@
             (when Y (rewire! net n_l Y))
             (when X (rewire! net n_r X))
             (rewire! net a_p n_p)
+            (delete-node! net a-name)
             (delete-node! net b-name)
             (debugf 1 "rule-AA!: applied on ~a and ~a, created ~a\n" a-name b-name n_sym)
             #t)))))
 
-;; Applicator-Copier(AC) 상호작용 규칙을 적용합니다. Copier를 통해 Applicator의 보조 포트들을 연결하고 Copier를 제거합니다.
 (define (rule-AC! net a-name c-name)
-  (if (and (eq? (node-agent net a-name) 'A) (eq? (node-agent net c-name) 'C))
-    (let ((c-p-peer (peer net (cons c-name 'p))))
-      (when (equal? c-p-peer (cons a-name 'p))
-        (let ((c-l-peer (peer net (cons c-name 'l)))
-              (c-r-peer (peer net (cons c-name 'r)))
-              (a-l (cons a-name 'l))
-              (a-r (cons a-name 'r)))
-          (when c-l-peer (rewire! net a-l c-l-peer))
-          (when c-r-peer (rewire! net a-r c-r-peer))
-          (unlink-port! net (cons a-name 'p))
-          (delete-node! net c-name)
-          #t)))
-    #f))
+  (if (and (eq? (node-agent net a-name) 'A)
+           (eq? (node-agent net c-name) 'C))
+      (let ((c-p-peer (peer net (cons c-name 'p))))
+	(when (equal? c-p-peer (cons a-name 'p))
+          (let ((c-l-peer (peer net (cons c-name 'l)))
+		(c-r-peer (peer net (cons c-name 'r)))
+		(a-l (cons a-name 'l))
+		(a-r (cons a-name 'r)))
+	    (when c-l-peer (rewire! net a-l c-l-peer))
+	    (when c-r-peer (rewire! net a-r c-r-peer))
+	    (unlink-port! net (cons a-name 'p))
+	    (delete-node! net c-name)
+	    #t)))
+      #f))
 
-;; Applicator-Eraser(AE) 상호작용 규칙을 적용합니다. Applicator와 Eraser를 제거합니다.
 (define (rule-AE! net a-name e-name)
   (if (and (eq? (node-agent net a-name) 'A) (eq? (node-agent net e-name) 'E))
-    (let ((e-p-peer (peer net (cons e-name 'p))))
-      (when (equal? e-p-peer (cons a-name 'p))
-        (delete-node! net a-name)
-        (delete-node! net e-name)
-        #t))
-    #f))
+      (let ((e-p-peer (peer net (cons e-name 'p))))
+	(when (equal? e-p-peer (cons a-name 'p))
+          (delete-node! net a-name)
+          (delete-node! net e-name)
+          #t))
+      #f))
 
-;; Copier-Eraser(CE) 상호작용 규칙을 적용합니다. Copier와 Eraser를 제거합니다.
 (define (rule-CE! net c-name e-name)
   (if (and (eq? (node-agent net c-name) 'C) (eq? (node-agent net e-name) 'E))
-    (let ((e-p-peer (peer net (cons e-name 'p))))
-      (when (equal? e-p-peer (cons c-name 'p))
-        (delete-node! net c-name)
-        (delete-node! net e-name)
-        #t))
-    #f))
+      (let ((e-p-peer (peer net (cons e-name 'p))))
+	(when (equal? e-p-peer (cons c-name 'p))
+          (delete-node! net c-name)
+          (delete-node! net e-name)
+          #t))
+      #f))
 
-;; 주어진 노드 이름이 상수 폴딩을 위한 리터럴 토큰으로 취급되어야 하는지 확인합니다.
 (define (is-literal-node? net node-name)
   "Return #t for nodes that should be treated as literal tokens for folding:
    - canonical literal names (lit-*, num-, str-, trig-*)
    - prefixed true/false tokens (true*, false*)
+   - condition literals prefixed with \"cond-\" are also treated as literals.
    - A-nodes that have no auxiliary peers (often generated as literal tokens)
      but exclude obvious operator nodes (eq-/lt-/gt-/if-impl) to avoid misclassifying
      comparator/if implementation nodes."
@@ -104,6 +98,7 @@
              (string-prefix? "trig-str-" s)
              (string-prefix? "true" s)
              (string-prefix? "false" s)
+             (string-prefix? "cond-" s)
              ;; A node with no aux peers is often a token-like literal.
              (and (eq? (node-agent net node-name) 'A)
                   (not (peer net (cons node-name 'l)))
@@ -113,7 +108,6 @@
                   (not (string-prefix? "gt-" s))
                   (not (string-prefix? "if-impl" s)))))))
 
-;; 리터럴 형태의 노드 이름에서 Scheme 값을 추출합니다.
 (define (get-literal-value node-name)
   "Extract a Scheme value from a literal-style node name when possible.
    Returns boolean/number/string/symbol, or #f when not recognized."
@@ -134,6 +128,8 @@
       (let* ((parts (string-split-char (substring s 9) #\-))
              (val-str (string-join-list (reverse (cdr (reverse parts))) "-")))
         (string-join-list (string-split-char val-str #\_) " ")))
+     ;; condition literals prefixed with \"cond-\" are treated as true.
+     ((string-prefix? "cond-" s) #t)
      ;; Fallback
      (else (string->symbol s)))))
 
@@ -148,76 +144,49 @@
 ;;    if the aux-side node is a C (copy) gadget, follow its .p peer (the real source).
 ;;    otherwise follow the aux link to the connected endpoint.
 ;; - Track visited endpoints (stringified) to avoid oscillation between copy/aux links.
-;; Returns #f when no literal found within `limit` steps.
-;; 엔드포인트(`ep`)를 따라가서 연결된 리터럴 값을 찾습니다. Copier나 passthrough 노드를 투과하여 추적합니다.
+;; Returns *unresolved* when no literal found within `limit` steps.
 (define (resolve-literal-ep net ep . maybe-limit)
   (let ((limit (if (null? maybe-limit) 8 (car maybe-limit))))
     (let loop ((current-ep ep) (k limit) (seen (make-hash-table)))
       (cond
-        ((or (not current-ep) (zero? k)) *unresolved*)
-        (else
-         (let ((key (format-string #f "~a" current-ep)))
-           (if (hash-ref seen key #f)
-               *unresolved*
-               (begin
-                 (hash-set! seen key #t)
-                 (if (and (pair? current-ep) (symbol? (car current-ep)))
-                     (let* ((n (car current-ep))
-                            (agent (node-agent net n)))
-                       (cond
-                         ;; It's a literal node, get its value.
-                         ((is-literal-node? net n) (get-literal-value n))
-                         ;; It's an Applicator (A): check for boolean gadget, passthrough, or cell patterns.
-                         ((eq? agent 'A)
-                          (let ((s (symbol->string n)))
-                            (if (or (string-contains? s "eq") (string-contains? s "lt")
-                                    (string-contains? s "gt") (string-prefix? "if-impl" s))
-                                *unresolved* ;; It's an operator, don't trace through it.
-                                (let* ((r-peer (peer net (cons n 'r)))
-                                       (l-peer (peer net (cons n 'l)))
-                                       (r-agent (and r-peer (node-agent net (car r-peer))))
-                                       (l-agent (and l-peer (node-agent net (car l-peer)))))
-                                  (cond
-                                    ((eq? r-agent 'E) #t)
-                                    ((eq? l-agent 'E) #f)
-                                    ;; Passthrough A node (no aux ports): follow its principal port.
-                                    ((and (not l-peer) (not r-peer))
-                                     (let ((p-peer (peer net (cons n 'p))))
-                                       (if p-peer (loop p-peer (- k 1) seen) *unresolved*)))
-                                    ;; Cell or wrapper with value on .r: follow it.
-                                    (r-peer (loop r-peer (- k 1) seen))
-                                    (else *unresolved*))))))
-                         ;; It's a Copier (C) node: follow its principal port.
-                         ((eq? agent 'C)
-                          (let ((p-peer (peer net (cons n 'p))))
-                            (if p-peer (loop p-peer (- k 1) seen) *unresolved*)))
-                         ;; Not a traceable node, so we can't resolve a literal.
-                         (else *unresolved*)))
-                     ;; The endpoint isn't a valid (node . port) pair.
-                     *unresolved*)))))))))
+       ((or (not current-ep) (zero? k)) *unresolved*)
+       (else
+        (let ((key (format-string #f "~a" current-ep)))
+          (if (hash-ref seen key #f)
+              *unresolved*
+              (begin
+                (hash-set! seen key #t)
+                (if (and (pair? current-ep) (symbol? (car current-ep)))
+                    (let* ((n (car current-ep))
+                           (agent (node-agent net n)))
+                      (cond
+                       ((is-literal-node? net n) (get-literal-value n))
+                       ((eq? agent 'A)
+                        (let ((s (symbol->string n)))
+                          (if (or (string-contains? s "eq")
+                                  (string-contains? s "lt")
+                                  (string-contains? s "gt")
+                                  (string-prefix? "if-impl" s))
+                              *unresolved*
+                              (let* ((r-peer (peer net (cons n 'r)))
+                                     (l-peer (peer net (cons n 'l)))
+                                     (r-agent (and r-peer (node-agent net (car r-peer))))
+                                     (l-agent (and l-peer (node-agent net (car l-peer)))))
+                                (cond
+                                 ((eq? r-agent 'E) #t)
+                                 ((eq? l-agent 'E) #f)
+                                 ((and (not l-peer) (not r-peer))
+                                  (let ((p-peer (peer net (cons n 'p))))
+                                    (if p-peer (loop p-peer (- k 1) seen) *unresolved*)))
+                                 (r-peer (loop r-peer (- k 1) seen))
+                                 (else *unresolved*))))))
+                       ((eq? agent 'C)
+                        (let ((p-peer (peer net (cons n 'p))))
+                          (if p-peer (loop p-peer (- k 1) seen) *unresolved*)))
+                       (else *unresolved*)))
+                    *unresolved*)))))))))
 
-;;; ----------------------------------------------------------------
-;;; 재작성 패스
-;;; ----------------------------------------------------------------
 
-;; 넷 전체에 대해 활성 쌍(active pair)을 찾아 `rule-AA!`를 적용하는 재작성 패스입니다.
-(define (rewrite-pass-A! net)
-  (let ((changed? #f)
-        (pairs (find-active-pairs net)))
-    (for-each
-     (lambda (pair)
-       (match pair
-         (((a . 'A) (b . 'A))
-          (let* ((s-a (symbol->string a)) (s-b (symbol->string b))
-                 (pass-through? (or (string-prefix? "inj-" s-a) (string=? "out" s-a) (string-prefix? "surface-merger-" s-a) (string-prefix? "a-" s-a)
-                                    (string-prefix? "inj-" s-b) (string=? "out" s-b) (string-prefix? "surface-merger-" s-b) (string-prefix? "a-" s-b))))
-            (when (rule-AA! net a b pass-through?)
-              (set! changed? #t))))
-         (_ #f)))
-     pairs)
-    changed?))
-
-;; 넷 전체에 대해 활성 쌍을 찾아 AC, AE, CE 규칙을 적용하여 Copier 관련 상호작용을 처리하는 재작성 패스입니다.
 (define (rewrite-pass-copy-fold! net)
   (let ((changed? #f)
         (pairs (find-active-pairs net)))
@@ -225,13 +194,46 @@
      (lambda (pair)
        (match pair
          (((a . 'A) (c . 'C))
-          (when (rule-AC! net a c)
-            (debugf 1 "rule-AC!: applied on ~a and ~a\n" a c)
-            (set! changed? #t)))
-         (((c . 'C) (a . 'A))
-          (when (rule-AC! net a c)
-            (debugf 1 "rule-AC!: applied on ~a and ~a\n" a c)
-            (set! changed? #t)))
+          (let ((skip? (let ((p (peer net (cons c 'p)))
+                             (l (peer net (cons c 'l)))
+                             (r (peer net (cons c 'r))))
+			 (or (and p (string-prefix? "if-impl" (symbol->string (car p))))
+                             (and l (string-prefix? "if-impl" (symbol->string (car l))))
+                             (and r (string-prefix? "if-impl" (symbol->string (car r))))))))
+		(unless skip?
+		  (when (rule-AC! net a c)
+                    (debugf 1 "rule-AC!: applied on ~a and ~a\n" a c)
+                    (set! changed? #t)))))
+          (((c . 'C) (a . 'A))
+           (when (rule-AC! net a c)
+             (debugf 1 "rule-AC!: applied on ~a and ~a\n" a c)
+             (set! changed? #t)))
+          (((a . 'A) (e . 'E))
+           (when (rule-AE! net a e)
+             (debugf 1 "rule-AE!: applied on ~a and ~a\n" a e)
+             (set! changed? #t)))
+          (((e . 'E) (a . 'A))
+           (when (rule-AE! net a e)
+             (debugf 1 "rule-AE!: applied on ~a and ~a\n" a e)
+             (set! changed? #t)))
+          (((c . 'C) (e . 'E))
+           (when (rule-CE! net c e)
+             (debugf 1 "rule-CE!: applied on ~a and ~a\n" c e)
+             (set! changed? #t)))
+          (((e . 'E) (c . 'C))
+           (when (rule-CE! net c e)
+             (debugf 1 "rule-CE!: applied on ~a and ~a\n" c e)
+             (set! changed? #t)))
+          (_ #f)))
+       pairs)
+     changed?))
+
+(define (rewrite-pass-AE! net)
+  (let ((changed? #f)
+        (pairs (find-active-pairs net)))
+    (for-each
+     (lambda (pair)
+       (match pair
          (((a . 'A) (e . 'E))
           (when (rule-AE! net a e)
             (debugf 1 "rule-AE!: applied on ~a and ~a\n" a e)
@@ -240,34 +242,22 @@
           (when (rule-AE! net a e)
             (debugf 1 "rule-AE!: applied on ~a and ~a\n" a e)
             (set! changed? #t)))
-         (((c . 'C) (e . 'E))
-          (when (rule-CE! net c e)
-            (debugf 1 "rule-CE!: applied on ~a and ~a\n" c e)
-            (set! changed? #t)))
-         (((e . 'E) (c . 'C))
-          (when (rule-CE! net c e)
-            (debugf 1 "rule-CE!: applied on ~a and ~a\n" c e)
-            (set! changed? #t)))
          (_ #f)))
      pairs)
     changed?))
 
-;; 넷에 주어진 boolean 값에 대한 전역 리터럴 노드가 없으면 생성하고, 그 이름을 반환합니다.
 (define (ensure-global-bool-node net val)
   (let ((name (if val (gensym "lit-true-") (gensym "lit-false-"))))
     (add-node! net name 'A)
     (mark-nu! net name)
     name))
 
-;; 조건이 리터럴 boolean 값으로 결정되는 IF 노드를 축약(fold)하는 재작성 패스입니다.
 (define (rewrite-pass-if-fold! net)
-  "Fold IF nodes when their condition resolves to a literal boolean via
-   shallow tracing (resolve-literal-ep). This allows patterns like
-   trigger -> in-copy -> condition to be recognized as constants."
   (let ((changed? #f))
     (for-each
      (lambda (if-name)
-       (when (string-prefix? "if-impl-" (symbol->string if-name))
+       (when (or (string-prefix? "if-impl-" (symbol->string if-name))
+                 (string-prefix? "if-impl" (symbol->string if-name)))
          (let* ((p-peer (peer net (cons if-name 'p)))
                 (cond-copy (and p-peer (car p-peer)))
                 (cond-ep (and cond-copy (peer net (cons cond-copy 'p))))
@@ -278,7 +268,7 @@
                     (pruned-port (if cond-val 'r 'l))
                     (kept-branch-ep (peer net (cons if-name kept-port)))
                     (pruned-branch-ep (peer net (cons if-name pruned-port))))
-               (when kept-branch-ep
+	       (when kept-branch-ep
                  (let* ((out-ep (peer net (cons if-name 'p)))
                         (kept-copier (car kept-branch-ep))
                         (value-source (peer net (cons kept-copier 'p))))
@@ -292,12 +282,7 @@
      (all-nodes-with-agent net 'A))
     changed?))
 
-;; 비교 연산자 가젯의 입력이 모두 리터럴 값으로 결정될 때, 이를 미리 계산하여 상수화하는 재작성 패스입니다.
 (define (rewrite-pass-const-fold! net)
-  "Perform local constant folding for small comparator/const patterns.
-   Use a shallow endpoint resolver (resolve-literal-ep) to follow common
-   passthroughs (C copy nodes, passthrough A nodes) so comparator inputs
-   that are fed via copier/trigger chains are still recognized as literals."
   (let ((changed? #f))
     (for-each
      (lambda (n)
@@ -313,12 +298,12 @@
                   (l-val (if l-ep (resolve-literal-ep net l-ep 8) *unresolved*))
                   (r-val (if r-ep (resolve-literal-ep net r-ep 8) *unresolved*)))
              (when (and (not (eq? l-val *unresolved*)) (not (eq? r-val *unresolved*)))
-               (let ((res
-                      (cond
-                       ((or (string-contains? s "lt-") (string-contains? s "-lt") (string-contains? s "lt")) (and (number? l-val) (number? r-val) (< l-val r-val)))
-                       ((or (string-contains? s "gt-") (string-contains? s "-gt") (string-contains? s "gt")) (and (number? l-val) (number? r-val) (> l-val r-val)))
-                       ((or (string-contains? s "eq-") (string-contains? s "-eq") (string-contains? s "eq")) (equal? l-val r-val))
-                       (else #f))))
+	       (let ((res
+		      (cond
+		       ((or (string-contains? s "lt-") (string-contains? s "-lt") (string-contains? s "lt")) (and (number? l-val) (number? r-val) (< l-val r-val)))
+		       ((or (string-contains? s "gt-") (string-contains? s "-gt") (string-contains? s "gt")) (and (number? l-val) (number? r-val) (> l-val r-val)))
+		       ((or (string-contains? s "eq-") (string-contains? s "-eq") (string-contains? s "eq")) (equal? l-val r-val))
+		       (else #f))))
                  (when (boolean? res)
                    (let ((lit (ensure-global-bool-node net res))
                          (out-ep (peer net (cons n 'p))))
@@ -329,11 +314,7 @@
      (all-nodes-with-agent net 'A))
     changed?))
 
-;; 경량 정리 패스: 연결된 포트가 없는 고아 Copier(C) 노드를 제거합니다.
 (define (rewrite-pass-wire-cleanup! net)
-  "Lightweight cleanup pass: remove orphaned copier (C) nodes that have no
-   connected ports. This avoids build-up of dead scaffolding created during
-   transformations and keeps subsequent passes efficient."
   (let ((changed? #f))
     (for-each
      (lambda (c)
@@ -346,18 +327,13 @@
      (all-nodes-with-agent net 'C))
     changed?))
 
-;; A-A 병합을 위한 재작성 패스입니다.
 (define (rewrite-pass-AA-merge! net)
-  "Merge adjacent Applicator (A) active pairs when possible by applying rule-AA!.
-   Returns #t if the net was changed."
   (let ((changed? #f)
         (pairs (find-active-pairs net)))
     (for-each
      (lambda (pair)
        (match pair
          (((a . 'A) (b . 'A))
-          ;; Try to apply AA merge; do not treat as pass-through here so that
-          ;; rule-AA! performs a true merge when possible.
           (when (rule-AA! net a b #f)
             (set! changed? #t)))
          (_ #f)))

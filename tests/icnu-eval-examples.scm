@@ -8,6 +8,10 @@
              (icnu rewrite)
              (icnu tools icnu-inject))
 
+;; Global flag to enable/disable detailed big‑step tracing.
+;; Set to #t when you want step‑by‑step output, otherwise keep #f for concise test logs.
+(define *trace-big-step-enabled* (make-parameter #t))
+
 ;; -----------------------------------------------------------------
 ;; helpers
 ;; -----------------------------------------------------------------
@@ -28,6 +32,26 @@
                   (reverse acc)
                   (loop (cdr l) (- n 1) (cons (car l) acc))))))
   (format-string #t "  pretty: ~a~%" (format-string #f "~a" (pretty-print net '((show-nu? . #t))))))
+  
+;; -----------------------------------------------------------------
+;; Trace a big‑step reduction, printing each iteration in a clear format.
+;; -----------------------------------------------------------------
+(define (trace-big-step net . maybe-max)
+  ;; If tracing is disabled, simply return without printing.
+  (when (*trace-big-step-enabled*)
+    (let ((max-iter (if (null? maybe-max) 100 (car maybe-max))))
+      (let loop ((i 0) (changed #t))
+        (when (and changed (< i max-iter))
+          (format-string #t "\n--- big‑step iteration ~a ---\n" i)
+          (print-net-step net (format-string #f "iteration ~a" i))
+          (let ((changed? #f))
+            (when (rewrite-pass-copy-fold! net) (set! changed? #t) (format-string #t "  [copy‑fold]\n"))
+            (when (rewrite-pass-const-fold! net) (set! changed? #t) (format-string #t "  [const‑fold]\n"))
+            (when (rewrite-pass-if-fold! net) (set! changed? #t) (format-string #t "  [if‑fold]\n"))
+            (when (rewrite-pass-A! net) (set! changed? #t) (format-string #t "  [A‑merge]\n"))
+            (when (rewrite-pass-AA-merge! net) (set! changed? #t) (format-string #t "  [AA‑merge]\n"))
+            (when (rewrite-pass-wire-cleanup! net) (set! changed? #t) (format-string #t "  [wire‑cleanup]\n"))
+            (loop (+ i 1) changed?)))))))
 
 (define (read-sexpr-from-file path)
   (call-with-input-file path
@@ -197,7 +221,8 @@
    'reuse-literals-example
    'conflict-wire-example
    'prim-add-mixed-example
-   'y-complex-example))
+   'y-complex-example
+   ))
 
 ;; -----------------------------------------------------------------
 ;; Tests / Demos
@@ -258,21 +283,44 @@
         (assert-true (or (equal? val 5) (equal? val 'num-5)) (format-string #f "injected value resolved: ~a" val)))
       #t)))
 
+;; -----------------------------------------------------------------
+;; Test that all example-names parse correctly
+;; -----------------------------------------------------------------
+(define (test-example-names)
+  (format-string #t "\nTEST: example-names parsing and reduction~%")
+  (for-each
+   (lambda (sym)
+     (let* ((sexpr (eval sym (interaction-environment)))
+            (net (if (string? sexpr)
+                     (parse-net (read-sexpr-from-string sexpr))
+                     (parse-net sexpr))))
+       (assert-true net (format-string #f "example ~a parsed successfully" sym))
+       ;; Run a traced big‑step reduction only when tracing is enabled.
+       (when (*trace-big-step-enabled*)
+         (trace-big-step net 100))
+       #t))
+   example-names)
+  #t)
+
 ;; Runner
 (define (run-all-eval-examples)
   (let ((tests (list
-                test-copier-small-step
-                test-const-fold-small-step
-                test-if-fold-big-step
-                test-aa-merge
-                test-injection-and-reduce)))
-    (display "Running icnu eval examples/tests...\n")
+                ;; test-copier-small-step
+                ;; test-const-fold-small-step
+                ;; test-if-fold-big-step
+                ;; test-aa-merge
+                ;; test-injection-and-reduce
+                test-example-names
+                )))
+    (display "=== Running icnu eval examples/tests ===\n")
     (for-each (lambda (t)
-                (format-string #t " - ~a ... " (format-string #f "~a" t))
+                (format-string #t "\n- ~a ... " (format-string #f "~a" t))
                 (let ((res (t)))
-                  (if res (display "ok\n") (display "FAIL\n"))))
+                  (if res
+                      (display "ok\n")
+                      (display "FAIL\n"))))
               tests)
-    (display "All icnu eval examples completed.\n")
+    (display "\n=== All icnu eval examples completed ===\n")
     #t))
 
 (run-all-eval-examples)

@@ -95,6 +95,61 @@
       (assert-true (not (and has-a has-b)) "one of a/b removed after AA"))
     #t))
 
+(define (test-eraser-creation)
+  (let ((n (empty-net)))
+    (add-node! n 'e 'E)
+    (assert-eq (node-agent n 'e) 'E "Eraser node created with agent E")
+    #t))
+
+(define (test-eraser-application)
+  (let ((n (empty-net)))
+    (add-node! n 'a 'A)
+    (add-node! n 'e 'E)
+    (link-peers! n (endpoint 'a 'p) (endpoint 'e 'p))
+    ;; Apply the AE rule via the rewrite pass
+    (assert-true (rewrite-pass-AE! n) "AE rule applied")
+    ;; Both nodes should have been deleted
+    (assert-false (node-agent n 'a) "Applicator A removed after AE")
+    (assert-false (node-agent n 'e) "Eraser E removed after AE")
+    #t))
+
+;; -----------------------------------------------------------------
+;; Test that all rewrite passes (including AE) work together on a mixed net.
+;; -----------------------------------------------------------------
+(define (test-all-rewrite-rules)
+  (let* ((net (parse-net
+               '(par
+                 ;; AC pattern
+                 (node a A) (node c C) (wire (a p) (c p))
+                 ;; AE pattern
+                 (node a2 A) (node e E) (wire (a2 p) (e p))
+                 ;; CE pattern
+                 (node c3 C) (node e3 E) (wire (c3 p) (e3 p))
+                 ;; AA pattern
+                 (node a3 A) (node b3 A) (wire (a3 p) (b3 p))
+                 ;; const-fold pattern (lt)
+                 (node lt A) (node num-2 A) (node num-3 A)
+                 (wire (num-2 p) (lt l)) (wire (num-3 p) (lt r)) (wire (lt p) (out p))
+                 ;; if-fold pattern with true condition
+                 (node if-impl A) (node cond-copy C) (node out-if A)
+                 (node cond-lit A)               ; added literal true node
+                 (wire (cond-lit p) (cond-copy p)) ; connect literal to condition copier
+                 (wire (cond-copy l) (if-impl p))
+                 (wire (if-impl p) (out-if p))
+                 (wire (if-impl l) (then-lit p))
+                 (node then-lit A)
+                 ;; orphan copier for cleanup
+                 (node orphan C))))
+        )
+    ;; Apply each rewrite pass and assert it reports a change.
+    (assert-true (rewrite-pass-copy-fold! net) "copy-fold applied")
+    ;; AE already handled by copy-fold pass
+    (assert-true (rewrite-pass-AA-merge! net) "AA‑merge applied")
+    (assert-true (rewrite-pass-const-fold! net) "const‑fold applied")
+    (assert-true (rewrite-pass-if-fold! net) "if‑fold applied")
+    (assert-true (rewrite-pass-wire-cleanup! net) "wire‑cleanup applied")
+    #t))
+
 ;; -- Runner ---------------------------------------------------------
 (define (run-all-rewrite-tests)
   (let ((tests (list
@@ -103,7 +158,11 @@
                 test-rewrite-pass-wire-cleanup
                 test-rewrite-pass-const-fold
                 test-AC_AE_CE_rules
-                test-rewrite-pass-AA-merge)))
+                test-rewrite-pass-AA-merge
+		test-eraser-creation
+		test-eraser-application
+		test-all-rewrite-rules
+		)))
     (display "Running rewrite unit tests...\n")
     (for-each (lambda (t)
                 (format-string #t " - ~a ... " (format-string #f "~a" t))

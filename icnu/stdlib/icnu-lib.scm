@@ -2,6 +2,7 @@
   #:use-module (icnu icnu)
   #:use-module (icnu utils strings)
   #:use-module (icnu utils format)
+  #:use-module (icnu utils helpers)
   #:export (IC_TRUE IC_FALSE IC_IF IC_Y
 		    IC_CHURCH-ENCODE
 		    JOIN-REPLACE JOIN-MAX
@@ -48,18 +49,16 @@
           
           ;; Copy the condition. Default to 'p' port for symbols (cells), but respect port if given as a pair.
           ,(mk-node c-c 'C)
-          ,(if (symbol? c-port)
-               (mk-wire c-port 'p c-c 'p)
-               (list 'wire c-port (list c-c 'p)))
+          ,(wire-or-list c-port c-c)
           ,(mk-wire c-c 'l if-impl 'p)
 
           ;; Copy then/else branches from their 'p' port (booleans are on 'p').
           ,(mk-node t-c 'C)
-          ,(if (symbol? t-port) (mk-wire t-port 'p t-c 'p) (list 'wire t-port (list t-c 'p)))
+          ,(wire-or-list t-port t-c)
           ,(mk-wire t-c 'l if-impl 'l)
 
           ,(mk-node e-c 'C)
-          ,(if (symbol? e-port) (mk-wire e-port 'p e-c 'p) (list 'wire e-port (list e-c 'p)))
+          ,(wire-or-list e-port e-c)
           ,(mk-wire e-c 'l if-impl 'r)
           
           ;; Use a copier to expose the result on the 'r' port of the out-node.
@@ -133,8 +132,8 @@
           ,(mk-node out-node 'A)
           ,(mk-node c-f 'C)
           ,(mk-node c-x 'C)
-          ,(if (symbol? f-port) (mk-wire f-port 'p c-f 'p) (list 'wire f-port (list c-f 'p)))
-          ,(if (symbol? x-port) (mk-wire x-port 'p c-x 'p) (list 'wire x-port (list c-x 'p)))
+          ,(wire-or-list f-port c-f)
+          ,(wire-or-list x-port c-x)
           ,(mk-wire c-f 'l out-node 'l)
           ,(mk-wire c-x 'l out-node 'r)))))
 
@@ -185,7 +184,7 @@
           ,(IC_LITERAL #f false-node)
           ;; copy in2 from its principal port to match IC_IF's `then` expectation
           ,(mk-node in2-copy 'C)
-          ,(if (symbol? in2-port) (mk-wire in2-port 'p in2-copy 'p) (list 'wire in2-port (list in2-copy 'p)))
+          ,(wire-or-list in2-port in2-copy)
           ,(IC_IF in1-port (list in2-copy 'l) (list false-node 'r) out-node)))))
 
 (define (IC_OR in1-port in2-port out-node)
@@ -198,7 +197,7 @@
           ,(IC_LITERAL #t true-node)
           ;; copy in2 from its principal port to match IC_IF's `else` expectation
           ,(mk-node in2-copy 'C)
-          ,(if (symbol? in2-port) (mk-wire in2-port 'p in2-copy 'p) (list 'wire in2-port (list in2-copy 'p)))
+          ,(wire-or-list in2-port in2-copy)
           ,(IC_IF in1-port (list true-node 'r) (list in2-copy 'l) out-node)))))
 
 (define (IC_NOT in-port out-node)
@@ -215,14 +214,11 @@
 (define (IC_PRIM_ADD in1 in2 out)
   (let* ((s1 (if (symbol? in1) (symbol->string in1) (symbol->string (car in1))))
          (s2 (if (symbol? in2) (symbol->string in2) (symbol->string (car in2))))
-         (starts-with?
-          (lambda (s p)
-            (let ((ls (string-length s)) (lp (string-length p)))
-              (and (>= ls lp) (string=? (substring s 0 lp) p))))))
+         )
     (cond
      ;; church + church -> church-(n+m)
-     ((and ((lambda (f) (f s1 "church-")) starts-with?)
-           ((lambda (f) (f s2 "church-")) starts-with?))
+     ((and (starts-with? s1 "church-")
+           (starts-with? s2 "church-"))
       (let* ((n1 (string->number (substring s1 7)))
              (n2 (string->number (substring s2 7)))
              (sum (+ (if n1 n1 0) (if n2 n2 0)))
@@ -234,8 +230,8 @@
               ;; expose the computed literal on out's aux port
               ,(mk-wire res 'p out 'r)))))
      ;; num + num -> num-(n+m)
-     ((and ((lambda (f) (f s1 "num-")) starts-with?)
-           ((lambda (f) (f s2 "num-")) starts-with?))
+     ((and (starts-with? s1 "num-")
+           (starts-with? s2 "num-"))
       (let* ((n1 (string->number (substring s1 4)))
              (n2 (string->number (substring s2 4)))
              (sum (+ (if n1 n1 0) (if n2 n2 0)))
@@ -280,11 +276,11 @@
           ,(mk-wire b 'l e 'p)))))
 
 (define (IC_Y fn out)
-  (let* ((y-node   (string->symbol (format-string #f "Y~a" (gensym ""))))
-         (dup-node (string->symbol (format-string #f "Ydup~a" (gensym ""))))
-         (app1     (string->symbol (format-string #f "Yapp1~a" (gensym ""))))
-         (app2     (string->symbol (format-string #f "Yapp2~a" (gensym ""))))
-         (res-node (string->symbol (format-string #f "Yres~a" (gensym "")))))
+  (let* ((y-node   (gensym "Y"))
+         (dup-node (gensym "Ydup"))
+         (app1     (gensym "Yapp1"))
+         (app2     (gensym "Yapp2"))
+         (res-node (gensym "Yres")))
     ;; Build explicit surface s-expression (lists) to avoid quasiquote issues.
     (list 'nu (list y-node dup-node app1 app2 res-node)
           (list 'par
@@ -294,9 +290,7 @@
                 (mk-node app1 'A)
                 (mk-node app2 'A)
                 (mk-node res-node 'A)
-                (if (symbol? fn)
-                    (mk-wire fn 'p dup-node 'p)
-                    (list 'wire fn (list dup-node 'p)))
+                (wire-or-list fn dup-node)
 
                 ;; duplicator outputs: supply two copies to app1 and app2
                 (mk-wire dup-node 'l app1 'p)

@@ -216,7 +216,8 @@
                 test-inject-deep-nested-list
                 test-church-apply-large
                 test-calc-basic
-                test-calc-from-string)))
+                test-calc-from-string
+                )))
     (display "Running expanded icnu-stdlib unit tests...\n")
     (for-each (lambda (t)
                 (format-string #t " - ~a ... " (format-string #f "~a" t))
