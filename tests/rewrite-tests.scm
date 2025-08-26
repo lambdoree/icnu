@@ -9,9 +9,15 @@
   (assert-true (is-literal-node? (empty-net) 'lit-true-abc) "lit-true recognized")
   (assert-true (is-literal-node? (empty-net) 'lit-false-xyz) "lit-false recognized")
   (assert-true (is-literal-node? (empty-net) 'num-42) "num- prefix recognized")
+  (assert-true (is-literal-node? (empty-net) 'str-hello) "str- prefix recognized")
+  (assert-true (is-literal-node? (empty-net) 'trig-num-123) "trig-num- prefix recognized")
+  (assert-true (is-literal-node? (empty-net) 'trig-str-abc) "trig-str- prefix recognized")
   (assert-eq (get-literal-value 'num-42) 42 "get-literal-value numeric")
   (assert-eq (get-literal-value 'lit-true-1) #t "get-literal-value true")
   (assert-eq (get-literal-value 'lit-false-1) #f "get-literal-value false")
+  (assert-eq (get-literal-value 'str-hello_world) "hello world" "get-literal-value string")
+  (assert-eq (get-literal-value 'trig-num-123-xyz) 123 "get-literal-value trig-num")
+  (assert-eq (get-literal-value 'trig-str-foo_bar-xyz) "foo bar" "get-literal-value trig-str")
   ;; unknown literal form falls back to symbol
   (assert-eq (get-literal-value 'unknown-xyz) 'unknown-xyz "unknown literal falls back to symbol")
   #t)
@@ -116,6 +122,30 @@
 ;; -----------------------------------------------------------------
 ;; Test that all rewrite passes (including AE) work together on a mixed net.
 ;; -----------------------------------------------------------------
+(define (test-if-fold-non-boolean-condition)
+  (let ((net (parse-net
+              '(par
+                (node if-impl A) (node cond-copy C) (node out-if A)
+                (node num-123 A) ; Non-boolean literal
+                (wire (num-123 p) (cond-copy p))
+                (wire (cond-copy l) (if-impl p))
+                (wire (cond-copy r) (out-if p))
+                (wire (if-impl l) (then-lit p))
+                (node then-lit A)))))
+    (assert-false (rewrite-pass-if-fold! net) "if-fold should not apply with non-boolean condition"))
+  #t)
+
+(define (test-resolve-literal-ep-cycle)
+  (let* ((net (parse-net '(par (node c1 C)
+                               (node c2 C)
+                               (node out A)
+                               (wire (c1 p) (c2 p))
+                               (wire (c2 p) (c1 p))
+                               (wire (out p) (c1 p)))))
+         (result (resolve-literal-ep net (endpoint 'out 'p))))
+    (assert-eq result *unresolved* "resolve-literal-ep should not loop on cycles"))
+  #t)
+
 (define (test-all-rewrite-rules)
   (let* ((net (parse-net
                '(par
@@ -135,7 +165,7 @@
                  (node cond-lit A)               ; added literal true node
                  (wire (cond-lit p) (cond-copy p)) ; connect literal to condition copier
                  (wire (cond-copy l) (if-impl p))
-                 (wire (if-impl p) (out-if p))
+                 (wire (cond-copy r) (out-if p))
                  (wire (if-impl l) (then-lit p))
                  (node then-lit A)
                  ;; orphan copier for cleanup
@@ -162,6 +192,8 @@
 		test-eraser-creation
 		test-eraser-application
 		test-all-rewrite-rules
+                test-if-fold-non-boolean-condition
+                test-resolve-literal-ep-cycle
 		)))
     (display "Running rewrite unit tests...\n")
     (for-each (lambda (t)

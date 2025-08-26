@@ -1,11 +1,22 @@
 (define-module (icnu utils format)
   #:export (format-string))
 
+;; format-string:
+;; - If destination is #f, return the formatted string.
+;; - If destination is #t, print to the current output port and return the string.
+;; - If destination is a non-boolean (assumed to be an output port), print to that port and return the string.
+;; - Fallback: print to current output port.
 (define (format-string destination fmt . args)
   (let ((str (apply simple-format fmt args)))
-    (if destination
-        (begin (display str) (force-output))
-        str)))
+    (cond
+     ((eq? destination #f)
+      str)
+     ((eq? destination #t)
+      (begin (display str) (force-output) str))
+     ((not (boolean? destination))
+      (begin (display str destination) (force-output) str))
+     (else
+      (begin (display str) (force-output) str)))))
 
 (define (simple-format fmt . args)
   (call-with-output-string

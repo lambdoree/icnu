@@ -23,9 +23,5 @@
              (set! errors (cons `(non-reciprocal-link ,port ,peer ,recip) errors)))))
        links))
 
-    (if (null? errors)
-        #t
-        (begin
-          (display "IR Validation Failed:\n")
-          (for-each (lambda (e) (write e) (newline)) (reverse errors))
-          #f))))
+    ;; Return the list of errors. An empty list indicates success.
+    (reverse errors)))

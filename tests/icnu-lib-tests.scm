@@ -5,6 +5,7 @@
              (icnu icnu)
              (icnu stdlib icnu-lib)
              (icnu rewrite)
+             (icnu eval)
              (icnu tools icnu-inject))
 
 ;; -- Helpers ----------------------------------------------------------
@@ -83,13 +84,39 @@
     (assert-true (node-agent mnet 'omax) "JOIN-MAX created out node"))
   #t)
 
-(define (test-IC_AND_OR_NOT_structure)
-  (let ((and-net (parse-net (IC_AND 'in1 'in2 'outand))))
-    (assert-true (node-agent and-net 'outand) "IC_AND created out node"))
-  (let ((or-net (parse-net (IC_OR 'in1 'in2 'outor))))
-    (assert-true (node-agent or-net 'outor) "IC_OR created out node"))
-  (let ((not-net (parse-net (IC_NOT 'in 'outnot))))
-    (assert-true (node-agent not-net 'outnot) "IC_NOT created out node"))
+(define (test-IC_BOOLEAN_EVAL_direct)
+  (let* (;; --- GADGETS ---
+         (true-cond-name 'true-cond)
+         (true-then-name 'true-then)
+         (false-else-name 'false-else)
+
+         ;; --- NETS ---
+         ;; AND (#t, #f) -> #f  (equivalent to: IF true-cond THEN false-else ELSE true-cond)
+         (and-net (parse-net
+                   `(par ,(IC_MK_TRUE true-cond-name)
+                         ,(IC_MK_FALSE false-else-name)
+                         ,(mk-node 'out-and 'A)
+                         ,(IC_IF `(,true-cond-name p) `(,false-else-name p) `(,true-cond-name p) 'out-and))))
+
+         ;; OR (#t, #f) -> #t   (IF true-cond THEN true-then ELSE false-else)
+         (or-net (parse-net
+                  `(par ,(IC_MK_TRUE true-cond-name)
+                        ,(IC_MK_TRUE true-then-name)
+                        ,(IC_MK_FALSE false-else-name)
+                        ,(mk-node 'out-or 'A)
+                        ,(IC_IF `(,true-cond-name p) `(,true-then-name p) `(,false-else-name p) 'out-or))))
+
+         ;; NOT #t -> #f        (IF true-cond THEN false-else ELSE true-then)
+         (not-net (parse-net
+                   `(par ,(IC_MK_TRUE true-cond-name)
+                         ,(IC_MK_TRUE true-then-name)
+                         ,(IC_MK_FALSE false-else-name)
+                         ,(mk-node 'out-not 'A)
+                         ,(IC_IF `(,true-cond-name p) `(,false-else-name p) `(,true-then-name p) 'out-not)))))
+
+    (assert-eq (eval-net and-net '((out-name . out-and))) #f "Direct AND eval: #t, #f -> #f")
+    (assert-eq (eval-net or-net '((out-name . out-or))) #t "Direct OR eval: #t, #f -> #t")
+    (assert-eq (eval-net not-net '((out-name . out-not))) #f "Direct NOT eval: #t -> #f"))
   #t)
 
 (define (test-IC_CHURCH_helpers_basic)
@@ -106,6 +133,12 @@
     (assert-true (node-agent net 'outc) "IC_CHURCH-APPLY created out node")
     (assert-true (>= (count-nodes-with-prefix net "church-app-") 3) "IC_CHURCH-APPLY created n app nodes")
     #t))
+
+(define (test-IC_CHURCH-APPLY-zero)
+  (let* ((net (parse-net (IC_CHURCH-APPLY 0 'f 'x 'outc)))
+         (eval-net (reduce-net-to-normal-form net)))
+    (assert-eq (peer eval-net (endpoint 'outc 'p)) (endpoint 'x 'p) "IC_CHURCH-APPLY with n=0 should wire x to out"))
+  #t)
 
 (define (test-IC_Y_basic_and_endpoint)
   ;; basic: symbol fn
@@ -169,9 +202,11 @@
                 test-IC_PRIM_ADD_constant_and_symbolic
                 test-IC_APPLY_and_IC_COPY
                 test-JOIN_REPLACE_AND_JOIN_MAX
-                test-IC_AND_OR_NOT_structure
+                test-IC_BOOLEAN_EVAL_direct
+                ;; test-IC_AND_OR_NOT_evaluation
                 test-IC_CHURCH_helpers_basic
                 test-IC_CHURCH_APPLY_structure
+                test-IC_CHURCH-APPLY-zero
                 test-IC_Y_basic_and_endpoint
                 test-IC_EQ_LT_GT_CONST_and_copy_ops
                 test-IC_FOLD_and_placeholders

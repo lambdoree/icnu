@@ -37,9 +37,8 @@
   (let* ((if-impl (gensym "if-impl-"))
          (c-c (gensym "cond-copy-"))
          (t-c (gensym "then-copy-"))
-         (e-c (gensym "else-copy-"))
-         (out-c (gensym "out-copy-")))
-    `(nu (,if-impl ,c-c ,t-c ,e-c ,out-c)
+         (e-c (gensym "else-copy-")))
+    `(nu (,if-impl ,c-c ,t-c ,e-c)
          (par
           ;; The final output node is a clean Applicator.
           ,(mk-node out-node 'A)
@@ -61,10 +60,8 @@
           ,(wire-or-list e-port e-c)
           ,(mk-wire e-c 'l if-impl 'r)
           
-          ;; Use a copier to expose the result on the 'r' port of the out-node.
-          ,(mk-node out-c 'C)
-          ,(mk-wire if-impl 'p out-c 'p)
-          ,(mk-wire out-c 'l out-node 'r)
+          ;; Wire the result of the IF to the principal port on the output node.
+          ,(mk-wire c-c 'r out-node 'p)
           ))))
 
 
@@ -94,7 +91,7 @@
 (define (IC_LITERAL val out)
   (cond
    ((boolean? val)
-    (let ((lit-node (gensym "lit-bool-")))
+    (let ((lit-node (gensym (if val "lit-true-" "lit-false-"))))
       `(nu (,lit-node)
            (par
             ,(if val (IC_MK_TRUE lit-node) (IC_MK_FALSE lit-node))
@@ -175,30 +172,16 @@
           ,(mk-wire c-right 'l out 'r)))))
 
 (define (IC_AND in1-port in2-port out-node)
-  ;; out = IF in1 THEN in2 ELSE FALSE
-  (let ((false-node (gensym "false-"))
-        (in2-copy (gensym "in2-copy-")))
-    `(nu (,false-node ,in2-copy)
-         (par
-          ,(mk-node out-node 'A)
-          ,(IC_LITERAL #f false-node)
-          ;; copy in2 from its principal port to match IC_IF's `then` expectation
-          ,(mk-node in2-copy 'C)
-          ,(wire-or-list in2-port in2-copy)
-          ,(IC_IF in1-port (list in2-copy 'l) (list false-node 'r) out-node)))))
+  ;; out = IF in1 THEN in2 ELSE in1 (which is FALSE)
+  `(par
+    ,(mk-node out-node 'A)
+    ,(IC_IF in1-port in2-port in1-port out-node)))
 
 (define (IC_OR in1-port in2-port out-node)
-  ;; out = IF in1 THEN TRUE ELSE in2
-  (let ((true-node (gensym "true-"))
-        (in2-copy (gensym "in2-copy-")))
-    `(nu (,true-node ,in2-copy)
-         (par
-          ,(mk-node out-node 'A)
-          ,(IC_LITERAL #t true-node)
-          ;; copy in2 from its principal port to match IC_IF's `else` expectation
-          ,(mk-node in2-copy 'C)
-          ,(wire-or-list in2-port in2-copy)
-          ,(IC_IF in1-port (list true-node 'r) (list in2-copy 'l) out-node)))))
+  ;; out = IF in1 THEN in1 (which is TRUE) ELSE in2
+  `(par
+    ,(mk-node out-node 'A)
+    ,(IC_IF in1-port in1-port in2-port out-node)))
 
 (define (IC_NOT in-port out-node)
   ;; out = IF in THEN FALSE ELSE TRUE
@@ -281,34 +264,33 @@
          (app1     (gensym "Yapp1"))
          (app2     (gensym "Yapp2"))
          (res-node (gensym "Yres")))
-    ;; Build explicit surface s-expression (lists) to avoid quasiquote issues.
-    (list 'nu (list y-node dup-node app1 app2 res-node)
-          (list 'par
-                ;; nodes
-                (mk-node y-node 'A)
-                (mk-node dup-node 'C)
-                (mk-node app1 'A)
-                (mk-node app2 'A)
-                (mk-node res-node 'A)
-                (wire-or-list fn dup-node)
+    (mk-nu (list y-node dup-node app1 app2 res-node)
+           (mk-par
+            ;; nodes
+            (mk-node y-node 'A)
+            (mk-node dup-node 'C)
+            (mk-node app1 'A)
+            (mk-node app2 'A)
+            (mk-node res-node 'A)
+            (wire-or-list fn dup-node)
 
-                ;; duplicator outputs: supply two copies to app1 and app2
-                (mk-wire dup-node 'l app1 'p)
-                (mk-wire dup-node 'r app2 'p)
+            ;; duplicator outputs: supply two copies to app1 and app2
+            (mk-wire dup-node 'l app1 'p)
+            (mk-wire dup-node 'r app2 'p)
 
-                ;; app1: receives argument via y-node's left port
-                (mk-wire app1 'l y-node 'l)
-                ;; app1's result is the argument for app2
-                (mk-wire app1 'r app2 'l)
+            ;; app1: receives argument via y-node's left port
+            (mk-wire app1 'l y-node 'l)
+            ;; app1's result is the argument for app2
+            (mk-wire app1 'r app2 'l)
 
-                ;; app2's result is wired back to y-node's right port to form the recursion loop
-                (mk-wire app2 'r y-node 'r)
+            ;; app2's result is wired back to y-node's right port to form the recursion loop
+            (mk-wire app2 'r y-node 'r)
 
-                ;; app1 produces a principal result; collect it at res-node
-                (mk-wire app1 'p res-node 'p)
+            ;; app1 produces a principal result; collect it at res-node
+            (mk-wire app1 'p res-node 'p)
 
-                ;; expose final result at out.p
-                (mk-wire res-node 'p out 'p)))))
+            ;; expose final result at out.p
+            (mk-wire res-node 'p out 'p)))))
 
 
 (define (IC_CHURCH-RUN n out)
@@ -415,13 +397,13 @@
   (let ((sym (if (symbol? name) name (string->symbol (format-string #f "nil-~a" name))))
         (e1 (gensym "e_"))
         (e2 (gensym "e_")))
-    (list 'nu (list sym e1 e2)
-          (list 'par
-                (mk-node sym 'A)
-                (mk-node e1 'E)
-                (mk-node e2 'E)
-                (mk-wire sym 'l e1 'p)
-                (mk-wire sym 'r e2 'p)))))
+    (mk-nu (list sym e1 e2)
+           (mk-par
+            (mk-node sym 'A)
+            (mk-node e1 'E)
+            (mk-node e2 'E)
+            (mk-wire sym 'l e1 'p)
+            (mk-wire sym 'r e2 'p)))))
 
 (define (IC_FIRST cons out)
   `(par ,(mk-node out 'A) ,(mk-wire cons 'l out 'p)))

@@ -173,6 +173,30 @@
     (assert-false (peer n (endpoint 'x 'p)) "delete-node! removed x's peer after deleting y")
     #t))
 
+(define (test-parse-net-malformed-wire)
+  (let ((malformed-input '(par (wire (a p))))) ; wire with only one endpoint
+    (assert-true
+     (catch #t
+            (lambda () (parse-net malformed-input) #f) ; return #f on success
+            (lambda (key . args) #t)) ; return #t on any exception
+     "parse-net should throw an error on malformed wire"))
+  #t)
+
+(define (test-link-conflict-error-mode)
+  (let ((n (empty-net)))
+    (add-node! n 'a 'A)
+    (add-node! n 'b 'A)
+    (add-node! n 'c 'A)
+    (set-link-conflict-mode! 'error)
+    (link-peers! n (endpoint 'a 'p) (endpoint 'b 'p))
+    ;; Attempting to link a.p to c.p should throw an error
+    (assert-true
+     (catch #t
+            (lambda () (link-peers! n (endpoint 'a 'p) (endpoint 'c 'p)) #f) ; #f on success
+            (lambda (key . args) #t)) ; #t on error
+     "link-peers! with mode 'error should throw on conflict")
+    #t))
+
 (define (test-validate_copy_isolation)
   (let ((n (parse-net '(par (node u A) (node v A) (wire (u p) (v p))))))
     (let ((c (copy-net n)))
@@ -208,6 +232,8 @@
 		test-unlink-by-equal-key
 		test-delete-node_cleans_links
 		test-validate_copy_isolation
+		test-parse-net-malformed-wire
+		test-link-conflict-error-mode
 		)))
     (display "Running icnu unit tests...\n")
     (for-each (lambda (t)

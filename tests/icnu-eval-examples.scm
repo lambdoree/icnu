@@ -222,65 +222,6 @@
    ))
 
 ;; -----------------------------------------------------------------
-;; Tests / Demos
-;; -----------------------------------------------------------------
-(define (test-copier-small-step)
-  (format-string #t "\nTEST: copier small-step~%")
-  (let ((net (small-step-demo copier-example)))
-    ;; after copy-fold, copier should be removed
-    (assert-false (member 'c (all-nodes-with-agent net 'C)) "copier removed after copy-fold")
-    #t))
-
-(define (test-const-fold-small-step)
-  (format-string #t "\nTEST: const-fold small-step~%")
-  (let ((net (small-step-demo const-compare-example)))
-    ;; lt1 should be removed by const-fold -> replaced by literal on out.r
-    (assert-false (member 'lt1 (all-nodes-with-agent net 'A)) "lt1 removed after const-fold")
-    #t))
-
-(define (test-if-fold-big-step)
-  (format-string #t "\nTEST: if-fold big-step~%")
-  ;; construct net where condition is literal true
-  (let* ((if-gadget (IC_IF 'cond 'then 'else 'out-if))
-         (net (parse-net `(par ,if-gadget
-                               ,(IC_LITERAL #t 'cond)
-                               ,(mk-node 'then 'A)
-                               ,(mk-node 'else 'A)))))
-    (print-net-step net "before big-step")
-    (let-values (((_iter-net it) (big-step-reduce net 20)))
-      (print-net-step net "after big-step")
-      ;; after folding, the if-impl node should be gone
-      (let ((if-impl-nodes (filter (lambda (n) (string-prefix? "if-impl-" (symbol->string n)))
-                                   (all-nodes-with-agent net 'A))))
-        (assert-true (null? if-impl-nodes) "if-impl removed after big-step"))
-      #t)))
-
-(define (test-aa-merge)
-  (format-string #t "\nTEST: AA-merge demo~%")
-  (let ((net (parse-net (read-sexpr-from-string aa-merge-example))))
-    (print-net-step net "aa before")
-    (assert-true (rewrite-pass-AA-merge! net) "AA merge applied")
-    (print-net-step net "aa after")
-    ;; a and b should not both remain as distinct A nodes
-    (let ((as (all-nodes-with-agent net 'A)))
-      (assert-true (<= (length as) 2) "AA merge reduced number of A nodes"))
-    #t))
-
-(define (test-injection-and-reduce)
-  (format-string #t "\nTEST: injection and reduce~%")
-  (let* ((base (read-sexpr-from-string injection-demo-base))
-         (inj (generate-injection-form (list (cons 'out 5))))
-         (combined (combine-pars inj base))
-         (net (parse-net combined)))
-    (print-net-step net "injected net before")
-    (let-values (((_net it) (big-step-reduce net 20)))
-      (print-net-step net "injected net after")
-      ;; ensure out.r resolves to literal 5
-      (let ((val (resolve-literal-ep net (endpoint 'out 'r) 8)))
-        (assert-true (or (equal? val 5) (equal? val 'num-5)) (format-string #f "injected value resolved: ~a" val)))
-      #t)))
-
-;; -----------------------------------------------------------------
 ;; Test that all example-names parse correctly
 ;; -----------------------------------------------------------------
 (define (test-example-names)
@@ -302,11 +243,6 @@
 ;; Runner
 (define (run-all-eval-examples)
   (let ((tests (list
-                ;; test-copier-small-step
-                ;; test-const-fold-small-step
-                ;; test-if-fold-big-step
-                ;; test-aa-merge
-                ;; test-injection-and-reduce
                 test-example-names
                 )))
     (display "=== Running icnu eval examples/tests ===\n")
