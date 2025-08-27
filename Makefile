@@ -22,7 +22,7 @@ install: build
 # Runs all test suites.
 test:
 	@echo "Running tests..."
-	@for f in tests/*.scm; do \
+	@for f in tests/*-tests.scm; do \
 		echo "--- Running $$f ---"; \
 		guile -L . $$f || exit 1; \
 	done

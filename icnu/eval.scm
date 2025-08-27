@@ -4,7 +4,7 @@
   #:use-module (icnu rewrite)
   #:use-module (icnu utils format)
   #:use-module (icnu utils log)
-  #:export (eval-icnu-string eval-net reduce-net-to-normal-form *default-reduction-passes*))
+  #:export (eval-icnu-string eval-net reduce-net-to-normal-form *default-reduction-passes* read-sexpr-from-string))
 
 (define (read-sexpr-from-string s)
   (call-with-input-string s read))

@@ -1,9 +1,16 @@
 (use-modules (icnu utils format)
              (icnu utils assertions)
-	     (srfi srfi-1)
+             (srfi srfi-1)
              (icnu icnu)
-             (icnu rewrite))
+             (icnu rewrite)
+             (icnu utils strings)
+             (icnu eval)
+             (icnu utils log)
+             (tests test-runner))
 
+(set-debug-level! 0)
+
+;; -- from tests/rewrite-tests.scm --
 (define (test-is-literal-and-get-literal)
   ;; is-literal-node? inspects symbol names heuristically; no need to add nodes.
   (assert-true (is-literal-node? (empty-net) 'lit-true-abc) "lit-true recognized")
@@ -21,6 +28,7 @@
   ;; unknown literal form falls back to symbol
   (assert-eq (get-literal-value 'unknown-xyz) 'unknown-xyz "unknown literal falls back to symbol")
   #t)
+
 
 (define (test-resolve-literal-ep)
   ;; Build a tiny net where a literal node is wired into out.r and ensure resolver follows it.
@@ -53,13 +61,13 @@
   ;; Expect the comparator to be folded (deleted) by the const-fold pass.
   (let ((n (parse-net
             '(par
-	      (node lt1 A)
-	      (node num-2 A)
-	      (node num-3 A)
-	      (node out A)
-	      (wire (num-2 p) (lt1 l))
-	      (wire (num-3 p) (lt1 r))
-	      (wire (lt1 p) (out p))))))
+			  (node lt1 A)
+			  (node num-2 A)
+			  (node num-3 A)
+			  (node out A)
+			  (wire (num-2 p) (lt1 l))
+			  (wire (num-3 p) (lt1 r))
+			  (wire (lt1 p) (out p))))))
     (assert-true (member 'lt1 (all-nodes-with-agent n 'A)) "lt1 present before const-fold")
     (assert-true (rewrite-pass-const-fold! n) "rewrite-pass-const-fold! returned true")
     (assert-false (member 'lt1 (all-nodes-with-agent n 'A)) "lt1 removed after const-fold"))
@@ -119,9 +127,6 @@
     (assert-false (node-agent n 'e) "Eraser E removed after AE")
     #t))
 
-;; -----------------------------------------------------------------
-;; Test that all rewrite passes (including AE) work together on a mixed net.
-;; -----------------------------------------------------------------
 (define (test-if-fold-non-boolean-condition)
   (let ((net (parse-net
               '(par
@@ -170,7 +175,7 @@
                  (node then-lit A)
                  ;; orphan copier for cleanup
                  (node orphan C))))
-        )
+         )
     ;; Apply each rewrite pass and assert it reports a change.
     (assert-true (rewrite-pass-copy-fold! net) "copy-fold applied")
     ;; AE already handled by copy-fold pass
@@ -180,31 +185,150 @@
     (assert-true (rewrite-pass-wire-cleanup! net) "wire‑cleanup applied")
     #t))
 
-;; -- Runner ---------------------------------------------------------
-(define (run-all-rewrite-tests)
-  (let ((tests (list
-                test-is-literal-and-get-literal
-                test-resolve-literal-ep
-                test-rewrite-pass-wire-cleanup
-                test-rewrite-pass-const-fold
-                test-AC_AE_CE_rules
-                test-rewrite-pass-AA-merge
-		test-eraser-creation
-		test-eraser-application
-		test-all-rewrite-rules
-                test-if-fold-non-boolean-condition
-                test-resolve-literal-ep-cycle
-		)))
-    (display "Running rewrite unit tests...\n")
-    (for-each (lambda (t)
-                (format-string #t " - ~a ... " (format-string #f "~a" t))
-                (let ((res (t)))
-                  (if res
-		      (display "ok\n")
-		      (display "FAIL\n"))))
-	      tests)
-    (display "All rewrite tests completed.\n")
+;; -- from tests/eval-tests.scm --
+(define (eval-from-string s)
+  (eval-net (parse-net (read-sexpr-from-string s))))
+
+(define (test-eval-aa-merge-to-string)
+  (let* ((input "(par (node a A) (node b A) (wire (a p) (b p)))")
+         (net (parse-net (read-sexpr-from-string input)))
+         (result-str (eval-net net)))
+    (assert-false (string-contains? result-str " a ") "eval removes original node 'a'")
+    (assert-false (string-contains? result-str " b ") "eval removes original node 'b'")
+    (assert-true (string-contains? result-str " a-") "eval creates a new merged node"))
+  #t)
+
+(define (test-eval-const-fold)
+  (let* ((input "(par (node lt1 A) (node c C) (wire (num-2 p) (c p)) (wire (c l) (lt1 l)) (wire (num-3 p) (lt1 r)) (wire (lt1 p) (out p)) (node num-2 A) (node num-3 A) (node out A))")
+         (net (parse-net (read-sexpr-from-string input)))
+         (result (eval-net net '((out-name . out)))))
+    (assert-eq result #t "const-fold of 2 < 3 evaluates to #t"))
+  #t)
+
+(define (test-reduce-nu-scope)
+  (let* ((input "(nu (x y) (par (node x A) (node y A) (wire (x p) (y p))))")
+         (net (parse-net (read-sexpr-from-string input)))
+         (result (eval-net net)))
+    (assert-true (string-contains? result "(nu (a-") "eval preserves nu scope for new nodes")
+    (assert-false (string-contains? result " x ") "eval with nu removes original node 'x'")
+    (assert-false (string-contains? result " y ") "eval with nu removes original node 'y'"))
+  #t)
+
+(define (test-reduce-eraser)
+  (let* ((input "(nu (a e) (par (node a A) (node e E) (wire (a p) (e p))))")
+         (net (parse-net (read-sexpr-from-string input)))
+         (result (eval-net net)))
+    (assert-true (string-contains? result "nu") "Eraser reduction preserves nu scope")
+    (assert-false (string-contains? result "node") "Eraser reduction removes all nodes"))
+  #t)
+
+(define (test-eval-if-true)
+  (let* ((input "(par
+                   (node if-impl A) (node cond-copy C) (node then-copy C) (node else-copy C)
+                   (node true A) (node then-val A) (node else-val A) (node out A)
+                   (wire (true p) (cond-copy p))
+                   (wire (cond-copy l) (if-impl p))
+                   (wire (then-val p) (then-copy p))
+                   (wire (then-copy l) (if-impl l))
+                   (wire (else-val p) (else-copy p))
+                   (wire (else-copy l) (if-impl r))
+                   (wire (cond-copy r) (out p)))")
+         (net (parse-net (read-sexpr-from-string input)))
+         (result (eval-net net '((out-name . out)))))
+    (assert-eq result 'then-val "eval of IF selects the 'then' branch value"))
+  #t)
+
+;; -- from tests/rewrite-rule-coverage.scm --
+(define (test-rule-AC)
+  (let ((net (parse-net '(par (node a A) (node c C) (wire (a p) (c p))))))
+    (assert-true (rewrite-pass-copy-fold! net) "AC rule applied via rewrite-pass-copy-fold!")
+    (assert-false (member 'c (all-nodes-with-agent net 'C)) "c removed after AC")
     #t))
 
-;; If run as a script, execute the tests.
-(run-all-rewrite-tests)
+(define (test-rule-AE)
+  (let ((net (parse-net '(par (node a A) (node e E) (wire (a p) (e p))))))
+    (assert-true (rewrite-pass-copy-fold! net) "AE rule applied via rewrite-pass-copy-fold!")
+    (assert-false (node-agent net 'a) "a removed after AE")
+    (assert-false (node-agent net 'e) "e removed after AE")
+    #t))
+
+(define (test-rule-CE)
+  (let ((net (parse-net '(par (node c C) (node e E) (wire (c p) (e p))))))
+    (assert-true (rewrite-pass-copy-fold! net) "CE rule applied via rewrite-pass-copy-fold!")
+    (assert-false (member 'c (all-nodes-with-agent net 'C)) "c removed after CE")
+    (assert-false (node-agent net 'e) "e removed after CE")
+    #t))
+
+(define (test-rule-AA)
+  (let ((net (parse-net '(par (node a A) (node b A) (wire (a p) (b p))))))
+    (assert-true (rewrite-pass-AA-merge! net) "AA rule applied via rewrite-pass-AA-merge!")
+    ;; After merge, both distinct a/b should not remain as separate applicators.
+    (let ((has-a (member 'a (all-nodes-with-agent net 'A)))
+          (has-b (member 'b (all-nodes-with-agent net 'A))))
+      (assert-true (not (and has-a has-b)) "one of a/b removed after AA"))
+    #t))
+
+(define (test-rule-const-fold)
+  (let ((net (parse-net
+              '(par
+                (node lt1 A)
+                (node num-2 A)
+                (node num-3 A)
+                (node out A)
+                (wire (num-2 p) (lt1 l))
+                (wire (num-3 p) (lt1 r))
+                (wire (lt1 p) (out p))))))
+    (assert-true (rewrite-pass-const-fold! net) "const-fold applied")
+    (assert-false (member 'lt1 (all-nodes-with-agent net 'A)) "lt1 removed after const-fold")
+    #t))
+
+(define (test-rule-if-fold)
+  ;; Build small if-impl with a literal true condition to trigger if-fold
+  (let ((net (parse-net
+              '(par
+                (node if-impl A)
+                (node cond-copy C)
+                (node lit-true-1 A)
+                (node then-lit A)
+                (node else-lit A)
+                (wire (lit-true-1 p) (cond-copy p))
+                (wire (cond-copy l) (if-impl p))
+                (wire (if-impl l) (then-lit p))
+                (wire (if-impl r) (else-lit p))))))
+    (assert-true (rewrite-pass-if-fold! net) "if-fold applied")
+    ;; if-impl should be removed after folding
+    (assert-false (member 'if-impl (all-nodes-with-agent net 'A)) "if-impl removed after if-fold")
+    #t))
+
+(define (test-rule-wire-cleanup)
+  (let ((net (parse-net '(par (node c1 C)))))
+    (assert-true (rewrite-pass-wire-cleanup! net) "wire-cleanup removed orphan copier")
+    (assert-false (member 'c1 (all-nodes-with-agent net 'C)) "c1 removed after cleanup")
+    #t))
+
+
+(run-tests "Eval-Rewrite"
+           (list
+            test-is-literal-and-get-literal
+            test-resolve-literal-ep
+            test-rewrite-pass-wire-cleanup
+            test-rewrite-pass-const-fold
+            test-AC_AE_CE_rules
+            test-rewrite-pass-AA-merge
+            test-eraser-creation
+            test-eraser-application
+            test-all-rewrite-rules
+            test-if-fold-non-boolean-condition
+            test-resolve-literal-ep-cycle
+            test-eval-aa-merge-to-string
+            test-eval-const-fold
+            test-reduce-nu-scope
+            test-reduce-eraser
+            test-eval-if-true
+            test-rule-AC
+            test-rule-AE
+            test-rule-CE
+            test-rule-AA
+            test-rule-const-fold
+            test-rule-if-fold
+            test-rule-wire-cleanup))
