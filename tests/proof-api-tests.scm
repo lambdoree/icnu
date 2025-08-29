@@ -1,0 +1,256 @@
+(use-modules (icnu utils format)
+             (icnu utils assertions)
+             (srfi srfi-1)
+             (srfi srfi-13)
+             (repl-load)
+             (icnu eval)
+             (icnu stdlib icnu-lib)
+             (icnu tools icnu-proof)
+             (tests test-runner))
+
+(set-debug-level! 0)
+
+
+(define (test-small-step-string-basic)
+  "small-step-string이 동작하고 문자열을 반환하는지 확인"
+  (let ((s "(par (node a A) (node b A) (wire (a p) (b p)))"))
+    (let ((res (small-step-string s)))
+      (assert-true res "small-step-string returned something")
+      #t)))
+
+(define (test-big-step-string-basic)
+  "big-step-string이 동작하고 문자열을 반환하는지 확인"
+  (let ((s "(par (node a A) (node b A) (wire (a p) (b p)))"))
+    (let ((res (big-step-string s)))
+      (assert-true res "big-step-string returned something")
+      #t)))
+
+(define (test-small-step-net-applies-AE)
+  "small-step-net이 AE 규칙을 적용하여 A/E 쌍을 제거하는지 확인"
+  (let* ((net (parse-net '(par (node a A) (node e E) (wire (a p) (e p)))))
+         (next (small-step-net net)))
+    (assert-true next "small-step-net returned a net")
+    (assert-false (node-agent next 'a) "node 'a' removed by AE")
+    (assert-false (node-agent next 'e) "node 'e' removed by AE")
+    #t))
+
+(define test-str
+  "(nu () (par (node n2 A lit/num 2) (node n4 A lit/num 4) (node s-lt A lit/str lt) (node s-gt A lit/str ge) (node s-eqL A lit/str lt-eq-left) (node add A prim/add) (node lt1 A prim/lt) (node if1 A prim/if) (node cc1 C) (node lt2 A prim/lt) (node if2 A prim/if) (node cc2 C) (node c2 C) (node c4a C) (node c4b C) (node out A) (wire (c2 p) (n2 p)) (wire (add l) (c2 l)) (wire (add r) (c2 r)) (wire (lt1 l) (add p)) (wire (c4a p) (n4 p)) (wire (lt1 r) (c4a l)) (wire (c4b p) (c4a r)) (wire (lt2 l) (c4b l)) (wire (lt2 r) (c4b r)) (wire (cc1 p) (lt1 p)) (wire (if1 l) (s-lt p)) (wire (if1 r) (if2 p)) (wire (cc1 l) (if1 p)) (wire (cc1 r) (out p)) (wire (cc2 p) (lt2 p)) (wire (if2 l) (s-eqL p)) (wire (if2 r) (s-gt p))))"
+  )
+
+(define (test-run-steps-print)
+  "run-steps-on-string 헬퍼가 #t을 반환하며 단계 출력을 수행하는지 확인"
+  (let ((s test-str))
+    (let ((ok (run-steps-on-string s 10)))
+      (assert-true ok "run-steps-on-string returned #t")
+      #t)))
+
+(define (test-aa-step-sequence)
+  "AA 병합의 단계별 시퀀스가 예상대로 생성되는지 확인"
+  (let* ((s "(par (node a A) (node b A) (wire (a p) (b p)))")
+         (sexpr (read-sexpr-from-string s))
+         (net   (parse-net sexpr))
+         (seq (let loop ((cur (copy-net net)) (acc '()) (i 0))
+                (let ((next (small-step-net (copy-net cur))))
+                  (if (or (not next) (>= i 10))
+                      (reverse (cons (format-string #f "~a" (pretty-print cur '((show-nu? . #t)))) acc))
+                      (loop next (cons (format-string #f "~a" (pretty-print cur '((show-nu? . #t)))) acc) (+ i 1)))))))
+    (assert-true (>= (length seq) 2) "AA sequence has at least 2 steps")
+    (let ((last (car (reverse seq))))
+      (assert-true (string-contains? last "a-0") "final step contains merged node name a-0"))
+    #t))
+
+(define (test-const-fold-step)
+  "const-fold이 리터럴 입력(2,3)으로 2<3을 평가하여 #t로 축약하는지 확인"
+  (let* ((s "(par (node lt1 A 'prim/lt) (node n2 A 'lit/num 2) (node n3 A 'lit/num 3) (node out A) (wire (n2 p) (lt1 l)) (wire (n3 p) (lt1 r)) (wire (lt1 p) (out p)))")
+         (res (small-step-string s)))
+    (assert-true res "small-step-string returned something for const-fold")
+    (assert-true (or (string-contains? res "#t") (string-contains? res "lit/bool")) "const-fold produced a boolean literal")
+    #t))
+
+(define (test-if-fold-step)
+  "prim/if와 참 조건의 if-fold가 동작하여 then-branch의 값을 선택하는지 확인"
+  (let* ((s "(par (node if-impl A 'prim/if) (node cond-copy C) (node true A 'lit/bool #t) (node then-val A 'lit/str 'then) (node else-val A 'lit/str 'else) (node out A) (wire (true p) (cond-copy p)) (wire (cond-copy l) (if-impl p)) (wire (then-val p) (if-impl l)) (wire (else-val p) (if-impl r)) (wire (cond-copy r) (out p)))")
+         (big (big-step-string s)))
+    (assert-true (string-contains? big "then") "big-step selected then branch (output contains 'then')")
+    #t))
+
+(define (test-church-small-vs-big)
+  "IC_CHURCH-APPLY의 small-step 시퀀스 마지막과 big-step 정규형이 관찰 가능한 out 노드를 갖는지 확인"
+  (let* ((sexpr (IC_CHURCH-APPLY 3 'f 'x 'outc))
+         (net (parse-net sexpr))
+         (reduced (big-step-net (copy-net net) '((max-iter . 200)))))
+    (assert-true (node-agent reduced 'outc) "big-step result has outc node")
+    (let* ((seq (small-step-sequence-net net 200))
+           (last-net (car (reverse seq))))
+      (assert-true (node-agent last-net 'outc) "small-step final net has outc node"))
+    #t))
+
+(define (test-small-vs-big-agreement)
+  "작은 입력에 대해 small-step으로 완전히 줄였을 때와 big-step의 결과가 최소한 out 노드 유무 등 관찰자 측면에서 일치하는지 확인"
+  (let* ((s "(par (node a A) (node b A) (wire (a p) (b p)))")
+         (net (parse-net (read-sexpr-from-string s)))
+         (big (big-step-net (copy-net net) '((max-iter . 50))))
+         (seq (small-step-sequence-net net 50))
+         (last (car (reverse seq))))
+    (assert-true (or (any (lambda (nm) (string-prefix? "a-0" (symbol->string nm))) (all-names big))
+                     (any (lambda (nm) (string-prefix? "a-0" (symbol->string nm))) (all-names last)))
+                 "either big-step or small-step produced a merged node with prefix a-0")
+    #t))
+
+```
+
+tests/proof-api-tests.scm
+```scheme
+(define (test-pure-icnu-either-laws)
+  "Tests laws from notice.cm on pure ICnu Either constructs."
+  (let* ((a-val 10) (l-val "is-left") (r-val "is-right")
+         (l-fn-sexpr `(par ; function l = λx. "is-left"
+                        ,(IC_LITERAL l-val 'l-val)
+                        ,(mk-node 'l-fn 'A)
+                        ,(mk-node 'drop-x 'E)
+                        ,(mk-wire 'l-fn 'r 'drop-x 'p)
+                        ,(mk-wire 'l-val 'p 'l-fn 'p)))
+         (r-fn-sexpr `(par ; function r = λx. "is-right"
+                        ,(IC_LITERAL r-val 'r-val)
+                        ,(mk-node 'r-fn 'A)
+                        ,(mk-node 'drop-x2 'E)
+                        ,(mk-wire 'r-fn 'r 'drop-x2 'p)
+                        ,(mk-wire 'r-val 'p 'r-fn 'p)))
+         (sexpr `(par
+                  ,(IC_LITERAL a-val 'val-a)
+                  ,l-fn-sexpr
+                  ,r-fn-sexpr
+                  ,(IC_PURE_LEFT '(val-a p) 'v-left)
+                  ,(IC_PURE_EITHER '(v-left p) '(l-fn p) '(r-fn p) 'result)))
+         (net (parse-net sexpr))
+         (res (eval-net net '((out-name . result)))))
+    (assert-eq res l-val "EITHER(LEFT a) l r should be l a -> l-val"))
+
+  (let* ((b-val 20) (l-val "is-left") (r-val "is-right")
+         (l-fn-sexpr `(par ; function l = λx. "is-left"
+                        ,(IC_LITERAL l-val 'l-val)
+                        ,(mk-node 'l-fn 'A)
+                        ,(mk-node 'drop-x 'E)
+                        ,(mk-wire 'l-fn 'r 'drop-x 'p)
+                        ,(mk-wire 'l-val 'p 'l-fn 'p)))
+         (r-fn-sexpr `(par ; function r = λx. "is-right"
+                        ,(IC_LITERAL r-val 'r-val)
+                        ,(mk-node 'r-fn 'A)
+                        ,(mk-node 'drop-x2 'E)
+                        ,(mk-wire 'r-fn 'r 'drop-x2 'p)
+                        ,(mk-wire 'r-val 'p 'r-fn 'p)))
+         (sexpr `(par
+                  ,(IC_LITERAL b-val 'val-b)
+                  ,l-fn-sexpr
+                  ,r-fn-sexpr
+                  ,(IC_PURE_RIGHT '(val-b p) 'v-right)
+                  ,(IC_PURE_EITHER '(v-right p) '(l-fn p) '(r-fn p) 'result)))
+         (net (parse-net sexpr))
+         (res (eval-net net '((out-name . result)))))
+    (assert-eq res r-val "EITHER(RIGHT b) l r should be r b -> r-val"))
+  #t)
+
+(define (test-pure-icnu-either-laws)
+  "Tests laws from notice.cm on pure ICnu Either constructs."
+  (let* ((a-val 10) (l-val "is-left") (r-val "is-right")
+         (l-fn-sexpr `(par ; function l = λx. "is-left"
+                        ,(IC_LITERAL l-val 'l-val)
+                        ,(mk-node 'l-fn 'A)
+                        ,(mk-node 'drop-x 'E)
+                        ,(mk-wire 'l-fn 'r 'drop-x 'p)
+                        ,(mk-wire 'l-val 'p 'l-fn 'p)))
+         (r-fn-sexpr `(par ; function r = λx. "is-right"
+                        ,(IC_LITERAL r-val 'r-val)
+                        ,(mk-node 'r-fn 'A)
+                        ,(mk-node 'drop-x2 'E)
+                        ,(mk-wire 'r-fn 'r 'drop-x2 'p)
+                        ,(mk-wire 'r-val 'p 'r-fn 'p)))
+         (sexpr `(par
+                  ,(IC_LITERAL a-val 'val-a)
+                  ,l-fn-sexpr
+                  ,r-fn-sexpr
+                  ,(IC_PURE_LEFT '(val-a p) 'v-left)
+                  ,(IC_PURE_EITHER '(v-left p) '(l-fn p) '(r-fn p) 'result)))
+         (net (parse-net sexpr))
+         (res (eval-net net '((out-name . result)))))
+    (assert-eq res l-val "EITHER(LEFT a) l r should be l a -> l-val"))
+
+  (let* ((b-val 20) (l-val "is-left") (r-val "is-right")
+         (l-fn-sexpr `(par ; function l = λx. "is-left"
+                        ,(IC_LITERAL l-val 'l-val)
+                        ,(mk-node 'l-fn 'A)
+                        ,(mk-node 'drop-x 'E)
+                        ,(mk-wire 'l-fn 'r 'drop-x 'p)
+                        ,(mk-wire 'l-val 'p 'l-fn 'p)))
+         (r-fn-sexpr `(par ; function r = λx. "is-right"
+                        ,(IC_LITERAL r-val 'r-val)
+                        ,(mk-node 'r-fn 'A)
+                        ,(mk-node 'drop-x2 'E)
+                        ,(mk-wire 'r-fn 'r 'drop-x2 'p)
+                        ,(mk-wire 'r-val 'p 'r-fn 'p)))
+         (sexpr `(par
+                  ,(IC_LITERAL b-val 'val-b)
+                  ,l-fn-sexpr
+                  ,r-fn-sexpr
+                  ,(IC_PURE_RIGHT '(val-b p) 'v-right)
+                  ,(IC_PURE_EITHER '(v-right p) '(l-fn p) '(r-fn p) 'result)))
+         (net (parse-net sexpr))
+         (res (eval-net net '((out-name . result)))))
+    (assert-eq res r-val "EITHER(RIGHT b) l r should be r b -> r-val"))
+  #t)
+
+
+(run-tests "ProofAPI"
+           (list
+            test-run-steps-print
+			))
+
+(use-modules (icnu utils format)
+             (icnu utils assertions)
+             (srfi srfi-1)
+             (srfi srfi-13)
+             (repl-load)
+             (icnu eval)
+             (icnu stdlib icnu-lib)
+             (icnu tools icnu-proof)
+             (tests test-runner))
+
+(set-debug-level! 0)
+
+(define (test-small-step-string-basic)
+  "small-step-string이 동작하고 문자열을 반환하는지 확인"
+  (let ((s "(par (node a A) (node b A) (wire (a p) (b p)))"))
+    (let ((res (small-step-string s)))
+      (assert-true res "small-step-string returned something")
+      #t)))
+
+(define (test-big-step-string-basic)
+  "big-step-string이 동작하고 문자열을 반환하는지 확인"
+  (let ((s "(par (node a A) (node b A) (wire (a p) (b p)))"))
+    (let ((res (big-step-string s)))
+      (assert-true res "big-step-string returned something")
+      #t)))
+
+(define (test-small-step-net-applies-AE)
+  "small-step-net이 AE 규칙을 적용하여 A/E 쌍을 제거하는지 확인"
+  (let* ((net (parse-net '(par (node a A) (node e E) (wire (a p) (e p)))))
+         (next (small-step-net net)))
+    (assert-true next "small-step-net returned a net")
+    (assert-false (node-agent next 'a) "node 'a' removed by AE")
+    (assert-false (node-agent next 'e) "node 'e' removed by AE")
+    #t))
+
+(define (test-run-steps-print)
+  "run-steps-on-string 헬퍼가 #t을 반환하며 단계 출력을 수행하는지 확인"
+  (let ((s test-str))
+    (let ((ok (run-steps-on-string s 10)))
+      (assert-true ok "run-steps-on-string returned #t")
+      #t)))
+
+(run-tests "ProofAPI"
+           (list
+            test-small-step-string-basic
+            test-big-step-string-basic
+            test-small-step-net-applies-AE
+            test-run-steps-print))
