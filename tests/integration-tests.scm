@@ -11,16 +11,13 @@
 
 (set-debug-level! 0)
 
-;; -- from tests/short-tests.scm --
 (define (test-resolve-literal-deep-chain)
   "Deep copier chain: resolve-literal-ep should traverse many Copier nodes and find the literal."
   (let* ((depth 128)
          (nodes '())
          (wires '()))
-    ;; source literal and final out node
-    (set! nodes (cons (mk-node 'num-1 'A) nodes))
+    (set! nodes (cons (mk-node 'num-1 'A 'lit/num 1) nodes))
     (set! nodes (cons (mk-node 'out 'A) nodes))
-    ;; build copier chain names c1..cN and wires:
     (let loop ((i 1))
       (when (<= i depth)
         (let ((cname (string->symbol (format-string #f "c~a" i))))
@@ -30,7 +27,6 @@
               (let ((prev (string->symbol (format-string #f "c~a" (- i 1)))))
                 (set! wires (cons (mk-wire prev 'l cname 'p) wires)))))
         (loop (+ i 1))))
-    ;; wire last copier to out
     (set! wires (cons (mk-wire (string->symbol (format-string #f "c~a" depth)) 'l 'out 'p) wires))
     (let ((sexpr (apply mk-par (append nodes wires))))
       (let ((net (parse-net sexpr)))
@@ -43,7 +39,7 @@
                  (mk-node 'c1 'C) (mk-node 'c2 'C) (mk-node 'out 'A)
                  (mk-wire 'c1 'l 'c2 'p)
                  (mk-wire 'c2 'l 'c1 'p)
-                 (mk-wire 'out 'p 'c1 'p))))
+                 (mk-wire 'out 'p 'c1 'r))))
     (let ((net (parse-net sexpr)))
       (assert-eq (resolve-literal-ep net (endpoint 'out 'p)) *unresolved* "cycle resolves to *unresolved*")))
   #t)
@@ -58,9 +54,9 @@
           #t
           (begin
             (set! nodes (cons (mk-node (string->symbol (format-string #f "a~a" i)) 'A) nodes))
-            (when (> i 1)
-	      (set! wires (cons (mk-wire (string->symbol (format-string #f "a~a" (- i 1))) 'p
-					 (string->symbol (format-string #f "a~a" i)) 'p)
+            (when (and (> i 1) (even? i))
+              (set! wires (cons (mk-wire (string->symbol (format-string #f "a~a" (- i 1))) 'p
+                                         (string->symbol (format-string #f "a~a" i)) 'p)
                                 wires)))
             (loop (+ i 1)))))
     (let ((sexpr (apply mk-par (append nodes wires)))
@@ -75,7 +71,6 @@
                      "unlimited reduction equals large numeric cap"))))
     #t))
 
-;; -- from tests/mid-tests.scm --
 (define (test-IC_Y_small_finite)
   "Create a small IC_Y net and ensure reduction finishes and out node exists.
    Use a trivially terminating function (it simply returns its argument) to avoid true recursion."
@@ -90,7 +85,7 @@
 
 (define (copier-name i) (string->symbol (format-string #f "c~a" i)))
 (define (out-name i)    (string->symbol (format-string #f "out-~a" i)))
-(define (make-literal-node) (mk-node 'num-99 'A))
+(define (make-literal-node) (mk-node 'num-99 'A 'lit/num 99))
 (define (make-out-nodes outs)
   (let loop ((i 1) (acc '()))
     (if (> i outs) (reverse acc)
@@ -151,8 +146,7 @@
               (verify-outs->99 reduced net outs)
               #t)))))))
 
-;; -- from tests/long-tests.scm --
-(define *long-tests-enabled* (make-parameter #f))
+(define *long-tests-enabled* (make-parameter #t))
 
 (define (test-long-church-apply_heavy)
   "Heavy reduction using IC_CHURCH-APPLY with a larger n.
@@ -162,12 +156,10 @@
       (let* ((n 30)
              (sexpr (read (open-input-string (format-string #f "~a" (IC_CHURCH-APPLY n 'f 'x 'outc))))))
         (let ((net (parse-net sexpr)))
-          ;; run with an upper cap to be defensive in CI; when enabled, this will exercise longer reductions.
-          (let ((reduced (reduce-net-to-normal-form net '((max-iter . 200)))))
+          (let ((reduced (reduce-net-to-normal-form net '((max-iter . 2000)))))
             (assert-true (node-agent reduced 'outc) "outc node exists after heavy reduction")
             #t)))))
 
-;; -- from tests/more-edge-tests.scm --
 (define (safe-parse sexpr)
   (catch 'safe-parse
     (lambda () (parse-net sexpr) #t)
@@ -179,9 +171,12 @@
     (let ((sexpr '(par (node a A) (node b A) (node c A)
                        (wire (a p) (b p))
                        (wire (a p) (c p)))))
-      (let ((ok (safe-parse sexpr)))
-        (assert-true ok "parse-net should not raise when parsing potentially conflicting surface form")))
-    (assert-eq (*link-conflict-mode*) 'error "parse-net should restore global link-conflict-mode")
+      (assert-true
+       (catch #t
+              (lambda () (parse-net sexpr) #f)
+              (lambda args #t))
+       "parse-net should raise an error on conflicting wires"))
+    (assert-eq (*link-conflict-mode*) 'error "parse-net should not change global link-conflict-mode")
     (set-link-conflict-mode! orig)
     #t))
 
@@ -220,11 +215,10 @@
 (define (test-resolve-literal-trigger-style)
   (let* ((sexpr (IC_LITERAL 7 'trig-out))
          (net (parse-net sexpr)))
-    (let ((val (resolve-literal-ep net (endpoint 'trig-out 'r))))
+    (let ((val (eval-net net '((out-name . trig-out)))))
       (assert-true (or (equal? val 7) (equal? val 'num-7)) "trigger-style literal resolves to 7"))
     #t))
 
-;; -- from tests/validation-tests.scm --
 (define (test-validate-ir-valid)
   (let ((net (parse-net '(par (node a A) (node b A) (wire (a p) (b p))))))
     (assert-true (null? (validate-ir net)) "validate-ir on a valid net should return an empty list")))
@@ -238,10 +232,29 @@
   (let ((net (empty-net)))
     (add-node! net 'a 'A)
     (add-node! net 'b 'A)
-    ;; Manually create a non-reciprocal link
     (hash-set! (net-links net) (endpoint 'a 'p) (endpoint 'b 'p))
     (assert-false (null? (validate-ir net)) "validate-ir on a net with non-reciprocal link should return a non-empty list")))
 
+(define (test-tag-system-resists-name-heuristics)
+  "Test that the rewrite system relies on tags, not node name heuristics.
+   An 'lt' operator is given a misleading 'if-impl' name, but tagged 'prim/lt'.
+   The const-fold pass should still correctly identify and fold it."
+  (let ((net (parse-net
+              '(par
+                (node if-impl-imposter A 'prim/lt)
+                (node num-10 A 'lit/num 10)
+                (node num-20 A 'lit/num 20)
+                (node out A)
+                (wire (num-10 p) (if-impl-imposter l))
+                (wire (num-20 p) (if-impl-imposter r))
+                (wire (if-impl-imposter p) (out p))))))
+    (assert-true (rewrite-pass-const-fold! net) "const-fold should apply based on tag")
+    (assert-false (node-agent net 'if-impl-imposter) "imposter node should be removed after folding")
+    (let ((out-peer (peer net (endpoint 'out 'p))))
+      (assert-true out-peer "out.p should have a peer")
+      (let ((val (resolve-literal-ep net out-peer)))
+        (assert-eq val #t "result of 10 < 20 is #t"))))
+  #t)
 
 (run-tests "Integration"
            (list
@@ -259,4 +272,5 @@
             test-resolve-literal-trigger-style
             test-validate-ir-valid
             test-validate-ir-invalid-agent
-            test-validate-ir-non-reciprocal-link))
+            test-validate-ir-non-reciprocal-link
+            test-tag-system-resists-name-heuristics))

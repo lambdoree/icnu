@@ -4,18 +4,21 @@
   #:use-module (icnu rewrite)
   #:use-module (icnu utils format)
   #:use-module (icnu utils log)
+  #:use-module (icnu tools icnu-validate)
   #:export (eval-icnu-string eval-net reduce-net-to-normal-form *default-reduction-passes* read-sexpr-from-string))
 
 (define (read-sexpr-from-string s)
   (call-with-input-string s read))
 
 (define *default-reduction-passes*
-  (list rewrite-pass-copy-fold!
-        rewrite-pass-const-fold!
-        rewrite-pass-if-fold!
-        rewrite-pass-AA-merge!
-        rewrite-pass-CE-annihilation!
-        rewrite-pass-wire-cleanup!))
+  (lambda ()
+    (list rewrite-pass-const-fold!
+          rewrite-pass-if-fold!
+          rewrite-pass-AA-merge!
+          rewrite-pass-AC!
+          rewrite-pass-AE!
+          rewrite-pass-CE-annihilation!
+          rewrite-pass-wire-cleanup!)))
 
 (define (apply-reduction-passes! net passes)
   (let ((changed? #f))
@@ -29,10 +32,11 @@
   (let* ((opts (if (null? maybe-opts) '() (car maybe-opts)))
          (max-entry (assoc 'max-iter opts))
          (max-iter (if max-entry (cdr max-entry) 100))
-         (passes (let ((v (assq-ref opts 'passes))) (if v v *default-reduction-passes*))))
+         (passes (let ((v (assq-ref opts 'passes))) (if v v (*default-reduction-passes*)))))
     (let loop ((i 0))
-      ;; If max-iter is a number, enforce the cap; if it's #f (or any non-number),
-      ;; treat as unlimited (no cap) and continue until fixpoint.
+      (let ((errors (validate-ir net)))
+        (when (not (null? errors))
+          (error "reduce-net-to-normal-form: validation failed at step" i errors (pretty-print net '((show-nu? . #t))))))
       (if (and (number? max-iter) (> i max-iter))
           (begin
             (warnf "reduce-net-to-normal-form: exceeded max iterations\n")
@@ -62,28 +66,9 @@
              (res (resolve-literal-ep net peer-ep)))
         (cond
          ((not (eq? res *unresolved*)) res)
-         ((and pn (is-literal-node? net pn)) (get-literal-value pn))
-         ;; Check if the peer is a boolean gadget (A-node wired to an Eraser).
-         ((and pn (eq? (node-agent net pn) 'A))
-          (let* ((rpeer (peer net (cons pn 'r)))
-                 (lpeer (peer net (cons pn 'l))))
-            (cond
-             ((and rpeer (eq? (node-agent net (car rpeer)) 'E)) #t)
-             ((and lpeer (eq? (node-agent net (car lpeer)) 'E)) #f)
-             (else *unresolved*))))
+         ((and pn (is-literal-node? net pn)) (get-literal-value net pn))
          (else *unresolved*)))))
 
-(define (boolean-heuristic-A-E net node-name port)
-  (let ((pp (peer net (endpoint node-name port))))
-    (if (and pp (let ((pn (car pp))) (and pn (eq? (node-agent net pn) 'A))))
-        (let* ((pn (car pp))
-               (rpeer (peer net (cons pn 'r)))
-               (lpeer (peer net (cons pn 'l))))
-          (cond
-           ((and rpeer (eq? (node-agent net (car rpeer)) 'E)) #t)
-           ((and lpeer (eq? (node-agent net (car lpeer)) 'E)) #f)
-           (else *unresolved*)))
-        *unresolved*)))
 
 (define (try-primary-port net out-name out-port)
   (resolve-ep->literal net (endpoint out-name out-port)))
@@ -96,21 +81,14 @@
           (if (not (eq? res *unresolved*)) res (loop (cdr ps)))))))
 
 (define (final-fallback net out-name)
-  (let loop2 ((ps2 (common-ports)))
-    (if (null? ps2)
-        (let loop3 ((ps3 (common-ports)))
-          (if (null? ps3)
-              *unresolved*
-              (let ((bh (boolean-heuristic-A-E net out-name (car ps3))))
-                (if (not (eq? bh *unresolved*))
-                    bh
-   (loop3 (cdr ps3))))))
-
-        (let* ((pp (peer net (endpoint out-name (car ps2))))
+  (let loop ((ps (common-ports)))
+    (if (null? ps)
+        *unresolved*
+        (let* ((pp (peer net (endpoint out-name (car ps))))
                (res (resolve-peer-general-or-direct net pp)))
           (if (not (eq? res *unresolved*))
               res
-              (loop2 (cdr ps2)))))))
+              (loop (cdr ps)))))))
 
 
 (define (resolve-from-out-name net out-name out-port)

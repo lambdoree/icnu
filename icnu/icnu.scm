@@ -7,46 +7,35 @@
   #:use-module (icnu utils strings)
   #:use-module (icnu utils log)
   #:export (
-	    ;; data builders (surface s-expr)
 	    mk-node mk-wire mk-par mk-nu
-		    ;; parse/print
 		    parse-net pretty-print
-		    ;; utilities
 		    empty-net copy-net make-fresh-name all-names node-agent endpoint valid-port?
-		    peer net-nodes net-links net-nu-set get-ports unlink-port!
+		    peer net-nodes net-links net-tags net-nu-set net-meta get-ports unlink-port!
 		    rewire! delete-node! all-nodes-with-agent find-active-pairs
-		    ;; runtime hooks
 		    set-link-conflict-mode!
 		    *link-conflict-mode*
-		    mark-nu!
+		    mark-nu! inherit-nu!
+		    mark-temporary! unmark-temporary! temporary-endpoint?
 		    link-peers!
-		    add-node!
+		    add-node! set-node-tag! node-tag set-node-meta! node-meta
 		    <net>
 		    net?
 		    ))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; 0. Internal representation
-;;
-;; Node types: 'A 'C 'E (core), and 'V (internal stub for free names)
-;; Ports: 'p 'l 'r
-;;
-;; Net:
-;;  - nodes : hash-table name => agent
-;;  - links : hash-table (name . port) => (name' . port')  (undirected; mirrored)
-;;  - nu    : hash-table name => #t    (flat ν binder set for printing)
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define-record-type <net>
-  (make-net nodes links nu-set counter)
+  (make-net nodes links nu-set counter tags tmp-endpoints meta)
   net?
-  (nodes net-nodes)  ;; hash name -> agent
-  (links net-links)  ;; hash (cons name port) -> (cons name port)
-  (nu-set net-nu-set)  ;; hash name -> #t
-  (counter net-counter set-net-counter!)) ;; integer counter for fresh-name generation
+  (nodes net-nodes)     ;; hash name -> agent
+  (links net-links)     ;; hash (cons name port) -> (cons name port)
+  (nu-set net-nu-set)   ;; hash name -> #t
+  (counter net-counter set-net-counter!) ;; integer counter for fresh-name generation
+  (tags net-tags)       ;; hash name -> tag symbol
+  (tmp-endpoints net-tmp-endpoints) ;; hash endpoint -> #t
+  (meta net-meta))      ;; hash name -> literal value
 
 (define (empty-net)
-  (make-net (make-hash-table) (make-hash-table) (make-hash-table) 0))
+  (make-net (make-hash-table) (make-hash-table) (make-hash-table) 0 (make-hash-table) (make-hash-table) (make-hash-table)))
 
 (define (copy-net n)
   "Deep-copy internal net tables to produce an independent net instance.
@@ -56,25 +45,23 @@
    with the source."
   (let ((nn (make-hash-table))
         (ll (make-hash-table))
-        (nu_copy (make-hash-table)))
-    ;; copy nodes (name -> agent)
+        (nu_copy (make-hash-table))
+        (tags_copy (make-hash-table))
+        (tmp_copy (make-hash-table))
+        (meta_copy (make-hash-table)))
     (hash-for-each (lambda (k v) (hash-set! nn k v)) (net-nodes n))
-    ;; copy links: create new cons keys/values for each link entry so that
-    ;; the copied net has independent pair objects (keys) and values.
     (hash-for-each
      (lambda (k v)
        (let ((k2 (if (pair? k) (cons (car k) (cdr k)) k))
              (v2 (if (pair? v) (cons (car v) (cdr v)) v)))
          (hash-set! ll k2 v2)))
      (net-links n))
-    ;; copy nu bindings
     (hash-for-each (lambda (k v) (hash-set! nu_copy k v)) (net-nu-set n))
-    ;; preserve counter
-    (make-net nn ll nu_copy (net-counter n))))
+    (hash-for-each (lambda (k v) (hash-set! tags_copy k v)) (net-tags n))
+    (hash-for-each (lambda (k v) (hash-set! tmp_copy k v)) (net-tmp-endpoints n))
+    (hash-for-each (lambda (k v) (hash-set! meta_copy k v)) (net-meta n))
+    (make-net nn ll nu_copy (net-counter n) tags_copy tmp_copy meta_copy)))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; 1. Basic ops: nodes/links
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define (valid-port? p) (memq p '(p l r)))
 
 (define (get-ports agent-type)
@@ -100,87 +87,87 @@
   (ensure-node! n name agent)
   n)
 
+(define (set-node-tag! n name tag)
+  (hash-set! (net-tags n) name tag))
+
+(define (set-node-meta! n name val)
+  (hash-set! (net-meta n) name val))
+
+(define (node-tag n name)
+  (hash-ref (net-tags n) name 'user/opaque))
+
+(define (node-meta n name)
+  (hash-ref (net-meta n) name #f))
+
 (define (node-agent n name)
   (hash-ref (net-nodes n) name #f))
+
+(define (mark-temporary! net node port)
+  (hash-set! (net-tmp-endpoints net) (endpoint node port) #t))
+
+(define (unmark-temporary! net node port)
+  (hash-remove! (net-tmp-endpoints net) (endpoint node port)))
+
+(define (temporary-endpoint? net ep)
+  (hash-ref (net-tmp-endpoints net) ep #f))
 
 (define (endpoint name port)
   (when (not (valid-port? port)) (error "Invalid port" port))
   (cons name port))
 
-(define *link-peers-warned* (make-hash-table))
-
-;; Link conflict policy:
-;; - *link-conflict-mode* (parameter) controls behavior when a-port or b-port is already linked.
-;;   'error               -> raise an error (default)
-;;   'warn                -> warn once per pair and skip creating the conflicting link (legacy)
-;;   'overwrite-injection -> prefer injection/temporary ports and overwrite previous mappings
 (define *link-conflict-mode* (make-parameter 'error))
 
 (define (set-link-conflict-mode! v)
-  (cond
-   ((boolean? v) (set-link-conflict-mode! (if v 'warn 'error)))
-   ((symbol? v) (*link-conflict-mode* v))
-   (else (error "set-link-conflict-mode!: invalid arg" v))))
+  (if (memq v ' (error inject-temporary replace-exact))
+      (*link-conflict-mode* v)
+      (error "set-link-conflict-mode!: invalid mode" v)))
 
 (define (link-peers! n a-port b-port)
-  ;; undirected link (idempotent & tolerant):
-  ;; - If the exact a-port <-> b-port mapping already exists, do nothing.
-  ;; - If either port is linked to a different peer, handle according to *link-conflict-mode*.
-  (let ((L (net-links n)))
-    (let ((exist-a (peer n a-port))
-          (exist-b (peer n b-port)))
-      (cond
-       ;; already linked the same way: idempotent no-op
-       ((and exist-a (equal? exist-a b-port)) #t)
-       ((and exist-b (equal? exist-b a-port)) #t)
-       ;; port linked to a different peer -> handle per policy
-       ((or exist-a exist-b)
-        (let* ((mode (*link-conflict-mode*))
-               (a-name-symbol (and (pair? a-port) (symbol? (car a-port)) (car a-port)))
-               (b-name-symbol (and (pair? b-port) (symbol? (car b-port)) (car b-port)))
-               (a-name (if a-name-symbol (symbol->string a-name-symbol) (format-string #f "~a" a-port)))
-               (b-name (if b-name-symbol (symbol->string b-name-symbol) (format-string #f "~a" b-port)))
-               (key (format-string #f "~a<->~a" a-name b-name)))
-          (cond
-           ((eq? mode 'error)
-            (error "link-peers!: conflicting link between" a-port b-port))
-           ((eq? mode 'overwrite-injection)
-            ;; When in overwrite-injection mode, always prefer the new link by
-            ;; removing any existing connections on the affected ports before
-            ;; creating the new one. This is robust because unlink-port! finds
-            ;; keys by value (equal?) rather than identity (eq?).
-            (when exist-a (unlink-port! n a-port))
-            (when exist-b (unlink-port! n b-port))
+  (let* ((L (net-links n))
+         (pa (peer n a-port))
+         (pb (peer n b-port))
+         (mode (*link-conflict-mode*)))
+    (case mode
+      ((error)
+       (if (and (or (not pa) (equal? pa b-port))
+                (or (not pb) (equal? pb a-port)))
+           (begin
+             (hash-set! L a-port b-port)
+             (hash-set! L b-port a-port))
+           (error "link-peers! [error]: conflicting link"
+                  (list 'a-port a-port 'peer pa)
+                  (list 'b-port b-port 'peer pb))))
+      ((replace-exact)
+       (cond
+         ((and (equal? pa b-port) (equal? pb a-port)) n) ; R1: idempotent
+         ((and (equal? pa b-port) (not pb)) (hash-set! L b-port a-port)) ; R2: repair
+         ((and (equal? pb a-port) (not pa)) (hash-set! L a-port b-port)) ; R2: repair
+         ((and (not pa) (not pb))
+          (error "replace-exact: cannot create new link" a-port b-port))
+         (else
+          (error "replace-exact: existing links differ from the exact pair"
+                 (list 'a a-port 'peer pa) (list 'b b-port 'peer pb)))))
+      ((inject-temporary)
+       (let ((ta (temporary-endpoint? n a-port))
+             (tb (temporary-endpoint? n b-port)))
+         (cond
+           ((or ta tb)
+            (when (and ta (not tb) pb (not (equal? pb a-port)))
+              (error "inject-temporary: non-temp peer is busy" b-port pb))
+            (when (and tb (not ta) pa (not (equal? pa b-port)))
+              (error "inject-temporary: non-temp peer is busy" a-port pa))
+            (when pa (unlink-port! n a-port))
+            (when pb (unlink-port! n b-port))
             (hash-set! L a-port b-port)
-            (hash-set! L b-port a-port)
-            #t)
-           ((eq? mode 'warn)
-            ;; Legacy behavior: log at debug level and skip creating the conflicting link.
-            ;; Preserve backward-compatibility with existing tests that expect
-            ;; 'warn' to not raise an exception; emit a single debug message per pair
-            ;; and skip creating the conflicting mapping so test runs are not polluted.
-            (unless (hash-ref *link-peers-warned* key #f)
-              (hash-set! *link-peers-warned* key #t)
-              (debugf 2 "link-peers!: skipping conflicting link between ~a and ~a; existing peer present.\n" a-name b-name))
-            #t)
-           (else
-            ;; Unknown conflict mode -> fail fast rather than silently skipping.
-            (error "link-peers!: unknown conflict-mode" mode a-port b-port)))))
-       (else
-        (hash-set! L a-port b-port)
-        (hash-set! L b-port a-port)
-	n)))))
+            (hash-set! L b-port a-port))
+           (else (error "inject-temporary: neither endpoint is temporary" a-port b-port)))))
+      (else (error "link-peers!: unknown conflict mode" mode)))))
 
 (define (unlink-port! n a-port)
   (let* ((L (net-links n))
          (b-port (peer n a-port)))
     (when b-port
-      ;; We found a link. Now we must remove BOTH directions.
-      ;; b-port is the actual value from the hash, so it's a valid key
-      ;; for the reverse link.
       (hash-remove! L b-port)
-      ;; For a-port, it might be a fresh cons. We have to find the key
-      ;; that is equal to it.
       (let ((key-to-remove #f))
         (hash-for-each (lambda (k v)
                          (when (equal? k a-port)
@@ -191,10 +178,6 @@
   n)
 
 (define (peer n a-port)
-  ;; Try direct hash lookup first (fast path). Some callers construct fresh
-  ;; cons cells like (cons name 'p) which are not `eq?` to the cons used as
-  ;; the original hash key; in that case fall back to scanning the links table
-  ;; for a matching (name . port) pair by value.
   (let ((direct (hash-ref (net-links n) a-port #f)))
     (if direct
         direct
@@ -221,7 +204,9 @@
     (when agent
       (for-each (lambda (pt) (unlink-port! n (cons x pt))) (get-ports agent))
       (hash-remove! (net-nodes n) x)
-      (hash-remove! (net-nu-set n) x)))
+      (hash-remove! (net-nu-set n) x)
+      (hash-remove! (net-tags n) x)
+      (hash-remove! (net-meta n) x)))
   n)
 
 (define (all-nodes-with-agent net agent-type)
@@ -258,16 +243,12 @@
      L)
     pairs))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; 2. Fresh names (ν)
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define (all-names n)
   (let ((s '()))
     (hash-for-each (lambda (k v) (set! s (cons k s))) (net-nodes n))
     s))
 
 (define (make-fresh-name n . maybe-prefix)
-  ;; Use a per-net counter to avoid O(N) scans of all names on each call.
   (let ((prefix (if (null? maybe-prefix) "n" (car maybe-prefix))))
     (letrec ((loop (lambda ()
                      (let* ((i (net-counter n))
@@ -279,25 +260,15 @@
 
 (define (mark-nu! n name) (hash-set! (net-nu-set n) name #t) n)
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; 3. Parsing surface s-expr -> net
-;;
-;; Surface forms:
-;;  (node a A)         ; a:A
-;;  (wire (a p) (b r)) ; a.p ~ b.r
-;;  (par e1 e2 ...)    ; e1 | e2 | ...
-;;  (nu (a b ...) body)
-;;
-;; Free names on a wire endpoint implicitly materialize as V nodes (internal).
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(define (inherit-nu! net new-node . parent-nodes)
+  (when (any (lambda (p) (hash-ref (net-nu-set net) p #f)) parent-nodes)
+    (mark-nu! net new-node)))
 
-;; Helper function to create a `(node ...)` S-expression.
-(define (mk-node name agent) `(node ,name ,agent))
-;; Helper function to create a `(wire ...)` S-expression.
+
+(define (mk-node name agent . args)
+  `(node ,name ,agent ,@args))
 (define (mk-wire a p b q) `(wire (,a ,p) (,b ,q)))
-;; Helper function to create a `(par ...)` S-expression.
 (define (mk-par . elts) `(par ,@elts))
-;; Helper function to create a `(nu ...)` S-expression.
 (define (mk-nu names body) `(nu ,names ,body))
 
 (define (unquote-if-needed x)
@@ -307,25 +278,12 @@
       x))
 
 (define (ensure-free-name-node! n name)
-  "If `name` is not already a node, create one.
-   It becomes an 'A' node if it looks like a literal or is qualified,
-   otherwise it becomes a 'V' node."
+  "If `name` is not already a node, create one as a 'V' (free name) node.
+   This enforces that all semantically meaningful nodes must be explicitly
+   declared with a `(node ...)` form, rather than being inferred from usage
+   on a wire."
   (unless (node-agent n name)
-    (let* ((s (symbol->string name))
-           (is-literal
-            (or (string-prefix? "inj-" s)
-                (string-prefix? "lit-" s)
-                (string-prefix? "num-" s)
-                (string-prefix? "church-" s)
-                (string-prefix? "cons-" s)
-                (string-prefix? "nil-" s)
-                (string-prefix? "app-" s)
-                (string=? s "true")
-                (string=? s "false")))
-           (is-qualified (string-contains? s ".")))
-      (if (or is-literal is-qualified)
-          (add-node! n name 'A)
-          (add-node! n name 'V)))))
+    (add-node! n name 'V)))
 
 (define (parse-endpoint n ep)
   (let* ((pair (match ep
@@ -377,13 +335,18 @@
 
 (define (parse-1 n form)
   (match form
-    ;; surface forms and "mk-*" helpers are treated as synonyms.
-    ((or ('node name-form agent-form)
-         ('mk-node name-form agent-form))
+    ((or ('node name-form agent-form . rest)
+         ('mk-node name-form agent-form . rest))
      (let ((name (unquote-if-needed name-form))
            (agent (unquote-if-needed agent-form)))
        (when (and (symbol? name) (symbol? agent))
-         (add-node! n name agent)))
+         (add-node! n name agent)
+         (when (pair? rest)
+           (let ((tag (unquote-if-needed (car rest))))
+             (set-node-tag! n name tag)
+             (when (pair? (cdr rest))
+               (let ((meta (unquote-if-needed (cadr rest))))
+                 (set-node-meta! n name meta)))))))
      n)
     ((or ('wire . args)
          ('mk-wire . args))
@@ -402,29 +365,9 @@
     (else (error "parse: unknown form" form))))
 
 (define (parse-net sexpr)
-  "Parse a surface sexpr into a net.
-     During parsing we temporarily relax the link-conflict-mode to 'warn
-     so that higher-level surface generators (stdlib helpers) can build
-     composite forms without triggering hard errors for transient link
-     conflicts. The global mode is restored after parsing."
-  (let ((old-mode (*link-conflict-mode*)))
-    (set-link-conflict-mode! 'warn)
-    (let ((res (parse-1 (empty-net) sexpr)))
-      (set-link-conflict-mode! old-mode)
-      res)))
+  "Parse a surface sexpr into a net."
+  (parse-1 (empty-net) sexpr))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; 4. Pretty printer with options
-;;
-;; (pretty-print net '((show-V? . #f) (show-nu? . #f)))
-;;
-;; - show-V?  : include internal 'V nodes and their links (default #f)
-;; - show-nu? : wrap the printed body with a flat (nu (names...) body)
-;;
-;; Note: This prints a *flat ν binder*. For exact scope, maintain a scope DAG
-;; and compute minimal ν-covers when printing. We never omit a fresh name; we
-;; may wrap a slightly larger scope.
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define (pp-bool opt k dflt)
   (let ((v (assq-ref opt k)))
     (if (boolean? v) v dflt)))
@@ -443,18 +386,24 @@
         (visible-node? nm)))
     (define nodes-out
       (let ( (acc '()) )
-        (hash-for-each 
+        (hash-for-each
          (lambda (nm ag)
            (when (visible-node? nm)
-             (set! acc (cons `(node ,nm ,ag) acc))))
-	 nodes)
+             (let* ((tag (node-tag net nm))
+                    (sentinel (list 'sentinel))
+                    (meta (hash-ref (net-meta net) nm sentinel)))
+               (set! acc (cons (cond
+                                ((not (eq? meta sentinel)) `(node ,nm ,ag ,tag ,meta))
+                                ((not (eq? tag 'user/opaque)) `(node ,nm ,ag ,tag))
+                                (else `(node ,nm ,ag)))
+                               acc)))))
+         nodes)
         (reverse acc)))
     (define links-out
       (let ((seen (make-hash-table))
             (acc '()))
         (hash-for-each
          (lambda (a b)
-           ;; print each undirected edge once; a < b lexicographically for stability
            (when (and (visible-endpoint? a) (visible-endpoint? b))
              (let* ((ka (symbol->string (car a)))
                     (kb (symbol->string (car b)))

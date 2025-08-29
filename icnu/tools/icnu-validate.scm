@@ -3,42 +3,81 @@
   #:use-module (srfi srfi-1)
   #:export (validate-ir))
 
-(define (validate-ir net)
-  (let ((errors '()))
-    ;; Check 1: All nodes are A, C, E, or V (free names).
+
+
+(define (vi:valid-agent? ag)
+  (memq ag '(A C E V)))
+
+(define (vi:agent-allows-port? agent port)
+  (if (eq? agent 'V)
+      #t
+      (let ((ports (get-ports agent)))
+        (and ports (memq port ports)))))
+
+(define (vi:check-agents nodes)
+  (let ((errs '()))
     (hash-for-each
      (lambda (name agent)
-       (unless (memq agent '(A C E V))
-         (set! errors (cons `(invalid-agent ,name ,agent) errors))))
-     (net-nodes net))
+       (unless (vi:valid-agent? agent)
+         (set! errs (cons `(invalid-agent ,name ,agent) errs))))
+     nodes)
+    (reverse errs)))
 
-    ;; Check 2: links must be well-formed, reciprocal, and have valid ports.
-    (let ((links (net-links net)))
-      (hash-for-each
-       (lambda (port peer)
-         (if (and (pair? port) (pair? peer))
-             (begin
-               ;; Port symbols must be one of p, l, r.
-               (unless (valid-port? (cdr port))
-                 (set! errors (cons `(invalid-port ,port) errors)))
-               (unless (valid-port? (cdr peer))
-                 (set! errors (cons `(invalid-port ,peer) errors)))
-               ;; Detect self‑loop links (a.p ↔ a.p).
-               (when (and (eq? (car port) (car peer))
-                          (eq? (cdr port) (cdr peer)))
-                 (set! errors (cons `(self-loop ,port) errors)))
-               (let ((recip (hash-ref links peer #f)))
-                 (unless (equal? recip port)
-                   (set! errors (cons `(non-reciprocal-link ,port ,peer ,recip) errors)))))
-             (set! errors (cons `(bad-link-format ,port ,peer) errors))))
-       links)
+(define (vi:check-one-link net links port peer)
+  (let ((errs '()))
+    (cond
+     ((not (and (pair? port) (pair? peer)))
+      (set! errs (cons `(bad-link-format ,port ,peer) errs)))
 
-    ;; Check 3: ν‑binder names must correspond to existing nodes.
+     (else
+      (unless (valid-port? (cdr port))
+        (set! errs (cons `(invalid-port ,port) errs)))
+      (unless (valid-port? (cdr peer))
+        (set! errs (cons `(invalid-port ,peer) errs)))
+
+      (let* ((a-name (car port))
+             (a-port (cdr port))
+             (b-name (car peer))
+             (b-port (cdr peer))
+             (a-agent (and (symbol? a-name) (node-agent net a-name)))
+             (b-agent (and (symbol? b-name) (node-agent net b-name))))
+        (when (and a-agent (not (vi:agent-allows-port? a-agent a-port)))
+          (set! errs (cons `(invalid-port-for-agent ,port ,a-agent) errs)))
+        (when (and b-agent (not (vi:agent-allows-port? b-agent b-port)))
+          (set! errs (cons `(invalid-port-for-agent ,peer ,b-agent) errs))))
+
+      (when (and (eq? (car port) (car peer))
+                 (eq? (cdr port) (cdr peer)))
+        (set! errs (cons `(self-loop ,port) errs)))
+
+      (let ((recip (hash-ref links peer #f)))
+        (unless (equal? recip port)
+          (set! errs (cons `(non-reciprocal-link ,port ,peer ,recip) errs))))))
+    (reverse errs)))
+
+(define (vi:check-links net)
+  (let* ((links (net-links net))
+         (errs  '()))
+    (hash-for-each
+     (lambda (port peer)
+       (set! errs (append errs (vi:check-one-link net links port peer))))
+     links)
+    errs))
+
+(define (vi:check-nu-binders net)
+  (let* ((nodes (net-nodes net))
+         (nu    (net-nu-set net))
+         (errs  '()))
     (hash-for-each
      (lambda (nu-name _)
-       (unless (hash-ref (net-nodes net) nu-name #f)
-         (set! errors (cons `(nu-missing-node ,nu-name) errors))))
-     (net-nu-set net))
+       (unless (hash-ref nodes nu-name #f)
+         (set! errs (cons `(nu-missing-node ,nu-name) errs))))
+     nu)
+    (reverse errs)))
 
-    ;; Return the list of errors. An empty list indicates success.
-    (reverse errors))))
+(define (validate-ir net)
+  (let* ((nodes (net-nodes net))
+         (errs1 (vi:check-agents nodes))
+         (errs2 (vi:check-links net))
+         (errs3 (vi:check-nu-binders net)))
+    (append errs1 errs2 errs3)))

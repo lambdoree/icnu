@@ -35,4 +35,3 @@
 (define (debug-once key level fmt . args)
   (apply debugf-limited (cons key (cons 1 (cons level (cons fmt args))))))
 
-;; (set-debug-level! 2)

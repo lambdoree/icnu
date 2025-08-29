@@ -5,16 +5,13 @@
   #:export (generate-injection-form))
 
 (define (generate-injection-form initial-values)
-  ;; Robust injection generator (no named-let; uses letrec for recursion)
   (let ((acc '()))
     (letrec* ((emit-list
                (lambda (lst)
                  (if (null? lst)
-                     ;; empty list => emit NIL node
                      (let ((n (gensym "inj-nil-")))
                        (set! acc (cons (IC_NIL n) acc))
                        n)
-                     ;; non-empty: reverse once, build cons-chain from tail forward
                      (let* ((rev  (reverse lst))
                             (tail (let ((n (gensym "inj-nil-")))
                                     (set! acc (cons (IC_NIL n) acc))
@@ -31,20 +28,16 @@
               (make-val
                (lambda (v)
                  (cond
-                  ;; primitive literal -> IC_LITERAL
                   ((or (boolean? v) (number? v) (symbol? v) (string? v))
                    (let ((tmp (gensym "inj-lit-")))
                      (set! acc (cons (IC_LITERAL v tmp) acc))
                      tmp))
-                  ;; list -> build cons chain
                   ((list? v)
                    (emit-list v))
-                  ;; fallback: fresh node 'A'
                   (else
                    (let ((tm (gensym "inj-node-")))
                      (set! acc (cons (mk-node tm 'A) acc))
                      tm))))))
-      ;; iterate requested injections and emit forms
       (for-each
        (lambda (pair)
          (when (pair? pair)
@@ -63,5 +56,4 @@
                  (set! acc (cons (mk-node tm 'A) acc))
                  (set! acc (cons (mk-wire tm 'p id 'r) acc))))))))
        initial-values)
-      ;; Return combined par form (preserve original order)
       `(par ,@(reverse acc)))))

@@ -12,7 +12,6 @@
 
 (set-debug-level! 0)
 
-;; -- Helpers ----------------------------------------------------------
 (define (count-agent net agent)
   "Count nodes of type agent in net."
   (let ((acc 0))
@@ -29,21 +28,19 @@
      (net-nodes net))
     acc))
 
-;; -- Individual tests -----------------------------------------------
 
 (define (test-IC_LITERAL-number)
   (let ((net (parse-net (IC_LITERAL 42 'out))))
-    (assert-eq (peer net (endpoint 'out 'r)) (endpoint 'num-42 'p) "IC_LITERAL number wires num-42 -> out.r")
-    (assert-eq (node-agent net 'num-42) 'A "num-42 node created as A")
+    (assert-eq (eval-net net '((out-name . out))) 42 "IC_LITERAL number resolves to 42")
     #t))
 
 (define (test-IC_LITERAL-boolean_and_triggers)
   (let ((net (parse-net (IC_LITERAL #t 'out))))
-    (assert-eq (resolve-literal-ep net (endpoint 'out 'r)) #t "IC_LITERAL #t resolves to #t"))
+    (assert-eq (eval-net net '((out-name . out))) #t "IC_LITERAL #t resolves to #t"))
   (let ((net2 (parse-net (IC_LITERAL #f 'out2))))
-    (assert-eq (resolve-literal-ep net2 (endpoint 'out2 'r)) #f "IC_LITERAL #f resolves to #f"))
+    (assert-eq (eval-net net2 '((out-name . out2))) #f "IC_LITERAL #f resolves to #f"))
   (let ((net3 (parse-net (IC_LITERAL 7 'trig-lit-x))))
-    (assert-true (resolve-literal-ep net3 (endpoint 'trig-lit-x 'r)) "trigger-style literal resolves"))
+    (assert-true (eval-net net3 '((out-name . trig-lit-x))) "trigger-style literal resolves"))
   #t)
 
 (define (test-IC_CONS_NIL_AND_ACCESSORS)
@@ -65,8 +62,12 @@
     #t))
 
 (define (test-IC_PRIM_ADD_constant_and_symbolic)
-  (let ((net (parse-net (IC_PRIM_ADD 'num-10 'num-5 'out))))
-    (assert-eq (peer net (endpoint 'out 'r)) (endpoint 'num-15 'p) "IC_PRIM_ADD folded 10+5 -> num-15"))
+  (let* ((sexpr `(par (node num-10 A 'lit/num 10)
+                       (node num-5 A 'lit/num 5)
+                       ,(IC_PRIM_ADD 'num-10 'num-5 'out)))
+         (net (parse-net sexpr))
+         (result (eval-net net '((out-name . out)))))
+    (assert-eq result 15 "IC_PRIM_ADD with constants folds to 15"))
   (let ((net2 (parse-net (IC_PRIM_ADD (list 'x 'p) (list 'y 'p) 'out2))))
     (assert-true (node-agent net2 'out2) "symbolic add created out node")
     (assert-true (> (count-agent net2 'C) 0) "symbolic add contains copier nodes")
@@ -90,48 +91,26 @@
 
 (define (test-IC_BOOLEAN_EVAL_direct)
   (let* ((;; --- GADGETS ---
-          true-cond-name 'true-cond)
-		 (true-then-name 'true-then)
-		 (false-else-name 'false-else)
-
-		 ;; --- NETS ---
-		 ;; AND (#t, #f) -> #f  (equivalent to: IF true-cond THEN false-else ELSE true-cond)
-		 (and-net (parse-net
-                   `(par ,(IC_MK_TRUE true-cond-name)
-						 ,(IC_MK_FALSE false-else-name)
-						 ,(mk-node 'out-and 'A)
-						 ,(IC_IF `(,true-cond-name p) `(,false-else-name p) `(,true-cond-name p) 'out-and))))
-
-		 ;; OR (#t, #f) -> #t   (IF true-cond THEN true-then ELSE false-else)
-		 (or-net (parse-net
-                  `(par ,(IC_MK_TRUE true-cond-name)
-						,(IC_MK_TRUE true-then-name)
-						,(IC_MK_FALSE false-else-name)
-						,(mk-node 'out-or 'A)
-						,(IC_IF `(,true-cond-name p) `(,true-then-name p) `(,false-else-name p) 'out-or))))
-
-		 ;; NOT #t -> #f        (IF true-cond THEN false-else ELSE true-then)
-		 (not-net (parse-net
-                   `(par ,(IC_MK_TRUE true-cond-name)
-						 ,(IC_MK_TRUE true-then-name)
-						 ,(IC_MK_FALSE false-else-name)
-						 ,(mk-node 'out-not 'A)
-						 ,(IC_IF `(,true-cond-name p) `(,false-else-name p) `(,true-then-name p) 'out-not)))))
-	
-  (assert-eq (eval-net and-net '((out-name . out-and))) #f "Direct AND eval: #t, #f -> #f")
-  (assert-eq (eval-net or-net '((out-name . out-or))) #t "Direct OR eval: #t, #f -> #t")
-  (assert-eq (eval-net not-net '((out-name . out-not))) #f "Direct NOT eval: #t -> #f"))
-  #t)
-
-(define (test-IC_CHURCH_helpers_basic)
-  (let ((enc (parse-net (IC_CHURCH-ENCODE 2))))
-	(assert-true (node-agent enc 'church-2) "IC_CHURCH-ENCODE creates node"))
-  (let ((r (parse-net (IC_CHURCH-RUN 3 'outc))))
-	(assert-true (node-agent r 'outc) "IC_CHURCH-RUN created out node"))
+          t1 'true1) (t2 'true2)
+          (f1 'false1) (f2 'false2))
+    (let* ((and-sexpr `(par ,(IC_MK_TRUE t1) ,(IC_MK_FALSE f1) ,(IC_MK_FALSE f2)
+                           ,(mk-node 'out-and 'A)
+                           ,(IC_IF `(,t1 p) `(,f1 p) `(,f2 p) 'out-and)))
+           (or-sexpr `(par ,(IC_MK_TRUE t1) ,(IC_MK_TRUE t2) ,(IC_MK_FALSE f1)
+                          ,(mk-node 'out-or 'A)
+                          ,(IC_IF `(,t1 p) `(,t2 p) `(,f1 p) 'out-or)))
+           (not-sexpr `(par ,(IC_MK_TRUE t1) ,(IC_MK_TRUE t2) ,(IC_MK_FALSE f1)
+                           ,(mk-node 'out-not 'A)
+                           ,(IC_IF `(,t1 p) `(,f1 p) `(,t2 p) 'out-not)))
+           (and-net (parse-net and-sexpr))
+           (or-net (parse-net or-sexpr))
+           (not-net (parse-net not-sexpr)))
+      (assert-eq (eval-net and-net '((out-name . out-and))) #f "Direct AND eval: #t, #f -> #f")
+      (assert-eq (eval-net or-net '((out-name . out-or))) #t "Direct OR eval: #t, #f -> #t")
+      (assert-eq (eval-net not-net '((out-name . out-not))) #f "Direct NOT eval: #t -> #f")))
   #t)
 
 (define (test-IC_CHURCH_APPLY_structure)
-  ;; build church-apply structure for n=3 and ensure it produces out node and at least 3 app nodes
   (let ((n 3)
 		(net (parse-net (IC_CHURCH-APPLY 3 'f 'x 'outc))))
 	(assert-true (node-agent net 'outc) "IC_CHURCH-APPLY created out node")
@@ -145,10 +124,8 @@
   #t)
 
 (define (test-IC_Y_basic_and_endpoint)
-  ;; basic: symbol fn
   (let ((net (parse-net (IC_Y 'f 'outy))))
 	(assert-true (node-agent net 'outy) "IC_Y created out node for symbol fn"))
-  ;; fn provided as endpoint pair
   (let ((net2 (parse-net (IC_Y (list 'g 'p) 'outy2))))
 	(assert-true (node-agent net2 'outy2) "IC_Y accepted endpoint-form fn"))
   #t)
@@ -164,16 +141,17 @@
 
 (define (test-IC_FOLD_and_placeholders)
   (let ((fnet (parse-net (IC_FOLD 'lst 'acc 'fn 'outf))))
-	(assert-true (node-agent fnet 'outf) "IC_FOLD created out node")
-	;; ensure IC_PRIM_ADD_RUNTIME delegates without error
-	(let ((r (parse-net (IC_PRIM_ADD_RUNTIME 'num-1 'num-1 'outp))))
-	  (assert-true (node-agent r 'outp) "IC_PRIM_ADD_RUNTIME created out"))
-	#t))
+    (assert-true (node-agent fnet 'outf) "IC_FOLD created out node")
+    (let* ((sexpr `(par
+                        (node num-1a A 'lit/num)
+                        (node num-1b A 'lit/num)
+                        ,(IC_PRIM_ADD_RUNTIME 'num-1a 'num-1b 'outp)))
+           (r (parse-net sexpr)))
+      (assert-true (node-agent r 'outp) "IC_PRIM_ADD_RUNTIME created out")))
+  #t)
 
-;; Additional tests: edge cases and stress cases
 (define (test-inject-empty-list)
   (let* ((net (parse-net (generate-injection-form (list (cons 'out '()))))))
-	;; A peer connected to out.r must exist, and that node must be an Applicator (A).
 	(let ((p (peer net (endpoint 'out 'r))))
 	  (assert-true (and p (eq? (node-agent net (car p)) 'A)) "inject empty list produced an A node on out.r"))
 	#t))
@@ -182,7 +160,6 @@
   (let* ((val (list 1 (list 2 (list 3 (list 4 5)))))
 		 (net (parse-net (generate-injection-form (list (cons 'out val)))))
 		 (cons-count (count-nodes-with-prefix net "inj-cons-")))
-	;; A deeply nested list should create multiple inj-cons- nodes.
 	(assert-true (>= cons-count 3) (format-string #f "deep nested cons chain created: ~a" cons-count))
 	#t))
 
@@ -204,7 +181,6 @@
 			test-IC_APPLY_and_IC_COPY
 			test-JOIN_REPLACE_AND_JOIN_MAX
 			test-IC_BOOLEAN_EVAL_direct
-			test-IC_CHURCH_helpers_basic
 			test-IC_CHURCH_APPLY_structure
 			test-IC_CHURCH-APPLY-zero
 			test-IC_Y_basic_and_endpoint

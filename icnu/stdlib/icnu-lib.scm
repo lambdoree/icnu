@@ -4,35 +4,35 @@
   #:use-module (icnu utils format)
   #:use-module (icnu utils helpers)
   #:export (IC_TRUE IC_FALSE IC_IF IC_Y
-		    IC_CHURCH-ENCODE
 		    JOIN-REPLACE JOIN-MAX
-		    ;; Net-building helpers
 		    IC_LITERAL IC_EQ_CONST IC_LT_CONST IC_GT_CONST
 		    IC_AND IC_OR IC_NOT IC_COPY
 		    IC_PRIM_ADD IC_PRIM_ADD_RUNTIME IC_APPLY
-		    ;; Boolean Gadget constructors
 		    IC_MK_TRUE IC_MK_FALSE
-            ;; from church-runtime
-            IC_CHURCH-RUN IC_CHURCH-APPLY IC_CONS IC_NIL IC_FIRST IC_REST IC_FOLD))
+            IC_CHURCH-APPLY IC_CONS IC_NIL IC_FIRST IC_REST IC_FOLD
+			IC_PURE_ID IC_PURE_PAIR IC_PURE_FST IC_PURE_SND IC_PURE_LEFT IC_PURE_RIGHT
+			IC_PURE_EITHER
+                        normalize-ep ensure-number gensyms))
 
-;; --- Booleans ---
-;; TRUE selects the first branch (left on an Applicator).
+(define (mk-node name agent . args)
+  `(node ,name ,agent ,@args))
+
+(define (mk-wire a p b q) `(wire (,a ,p) (,b ,q)))
+
+(define (mk-par . elts) `(par ,@elts))
+
+(define (mk-nu names body) `(nu ,names ,body))
+
 (define IC_TRUE
-  (mk-nu '(e b)
+  (mk-nu '(b)
          (mk-par
-          (mk-node 'b 'A)
-          (mk-node 'e 'E)
-          (mk-wire 'b 'r 'e 'p))))
+          (mk-node 'b 'A 'lit/bool #t))))
 
-;; FALSE selects the second branch (right on an Applicator).
 (define IC_FALSE
-  (mk-nu '(e b)
+  (mk-nu '(b)
          (mk-par
-          (mk-node 'b 'A)
-          (mk-node 'e 'E)
-          (mk-wire 'b 'l 'e 'p))))
+          (mk-node 'b 'A 'lit/bool #f))))
 
-;; IF c t e -> out
 (define (IC_IF c-port t-port e-port out-node)
   (let* ((if-impl (gensym "if-impl-"))
          (c-c (gensym "cond-copy-"))
@@ -40,18 +40,14 @@
          (e-c (gensym "else-copy-")))
     `(nu (,if-impl ,c-c ,t-c ,e-c)
          (par
-          ;; The final output node is a clean Applicator.
           ,(mk-node out-node 'A)
           
-          ;; Internal applicator that performs the IF selection.
-          ,(mk-node if-impl 'A)
+          ,(mk-node if-impl 'A 'prim/if)
           
-          ;; Copy the condition. Default to 'p' port for symbols (cells), but respect port if given as a pair.
           ,(mk-node c-c 'C)
           ,(wire-or-list c-port c-c)
           ,(mk-wire c-c 'l if-impl 'p)
 
-          ;; Copy then/else branches from their 'p' port (booleans are on 'p').
           ,(mk-node t-c 'C)
           ,(wire-or-list t-port t-c)
           ,(mk-wire t-c 'l if-impl 'l)
@@ -60,18 +56,10 @@
           ,(wire-or-list e-port e-c)
           ,(mk-wire e-c 'l if-impl 'r)
           
-          ;; Wire the result of the IF to the principal port on the output node.
           ,(mk-wire c-c 'r out-node 'p)
           ))))
 
 
-;; --- Church Numerals ---
-(define (IC_CHURCH-ENCODE n)
-  (let ((sym (string->symbol (format-string #f "church-~a" n))))
-    (mk-node sym 'A)))
-
-;; --- Lattice Joins ---
-;; JOIN-REPLACE(x, y) = y
 (define (JOIN-REPLACE x y out)
   (let ((e (gensym "erase_")))
     (mk-nu (list e)
@@ -79,44 +67,20 @@
                    (mk-wire e 'p x 'p)
                    (mk-wire out 'p y 'p)))))
 
-;; JOIN-MAX(x, y) = if x > y then x else y
 (define (JOIN-MAX x y out)
-  ;; Placeholder for a comparator net
   (let ((comp (gensym "max_comp_")))
     (mk-nu (list comp)
            (mk-par (mk-node comp 'A)
                    (mk-wire comp 'p out 'p)))))
 
-;; --- Net-building helpers for propagators ---
 (define (IC_LITERAL val out)
   (cond
    ((boolean? val)
-    (let ((lit-node (gensym (if val "lit-true-" "lit-false-"))))
-      `(nu (,lit-node)
-           (par
-            ,(if val (IC_MK_TRUE lit-node) (IC_MK_FALSE lit-node))
-            ,(mk-node out 'A)
-            ,(mk-wire lit-node 'p out 'r)))))
+    `(par ,(mk-node out 'A 'lit/bool val)))
    ((number? val)
-    (let* ((is-trigger (string-prefix? "trig-lit-" (symbol->string out)))
-           (lit (if is-trigger
-                    (gensym (format-string #f "trig-num-~a-" val))
-                    (string->symbol (format-string #f "num-~a" val)))))
-      (if (eq? lit out)
-          `(par ,(mk-node out 'A))
-          (let ((body `(par ,(mk-node lit 'A) ,(mk-node out 'A) ,(mk-wire lit 'p out 'r))))
-            (if is-trigger `(nu (,lit) ,body) body)))))
+    `(par ,(mk-node out 'A 'lit/num val)))
    ((or (symbol? val) (string? val))
-    (let* ((is-trigger (string-prefix? "trig-lit-" (symbol->string out)))
-           (str-val (if (symbol? val) (symbol->string val) val))
-           (safe-str (string-join-list (string-split-char str-val #\space) "_"))
-           (lit (if is-trigger
-                    (gensym (string-append "trig-str-" safe-str "-"))
-                    (string->symbol (string-append "str-" safe-str)))))
-      (if (eq? lit out)
-          `(par ,(mk-node out 'A))
-          (let ((body `(par ,(mk-node lit 'A) ,(mk-node out 'A) ,(mk-wire lit 'p out 'r))))
-            (if is-trigger `(nu (,lit) ,body) body)))))
+    `(par ,(mk-node out 'A 'lit/str (if (symbol? val) (list 'quote val) val))))
    (else
     (error "IC_LITERAL: unsupported literal type" val))))
 
@@ -134,56 +98,52 @@
           ,(mk-wire c-f 'l out-node 'l)
           ,(mk-wire c-x 'l out-node 'r)))))
 
-(define (IC_GENERIC_CONST_OP const-val in-port out-node)
+(define (IC_GENERIC_CONST_OP const-val in-port out-node tag)
   (let* ((lit (gensym "lit-"))
          (in-copy (gensym "in-copy-")))
     `(nu (,lit ,in-copy)
          (par ,(IC_LITERAL const-val lit)
-              ,(mk-node out-node 'A)
+              ,(mk-node out-node 'A tag)
               ,(mk-node in-copy 'C)
               ,(wire-or-list in-port in-copy)
               ,(mk-wire in-copy 'l out-node 'l)
               ,(mk-wire lit 'p out-node 'r)))))
 
 (define (IC_EQ_CONST const-val in-port out-node)
-  (IC_GENERIC_CONST_OP const-val in-port out-node))
+  (IC_GENERIC_CONST_OP const-val in-port out-node 'prim/eq))
 
 (define (IC_LT_CONST const-val in-port out-node)
-  (IC_GENERIC_CONST_OP const-val in-port out-node))
+  (IC_GENERIC_CONST_OP const-val in-port out-node 'prim/lt))
 
 (define (IC_GT_CONST const-val in-port out-node)
-  (IC_GENERIC_CONST_OP const-val in-port out-node))
+  (IC_GENERIC_CONST_OP const-val in-port out-node 'prim/gt))
 
 (define (IC_COPY in out)
-  (let ((c-left (gensym "c-left-"))
-        (c-right (gensym "c-right-")))
-    `(nu (,c-left ,c-right)
-	 (par
-          ;; The output gadget 'out' is a fresh Applicator.
-          ,(mk-node out 'A)
-          ;; Copy the left branch of 'in' to the left branch of 'out'.
-          ,(mk-node c-left 'C)
-          ,(mk-wire in 'l c-left 'p)
-          ,(mk-wire c-left 'l out 'l)
-          ;; Copy the right branch of 'in' to the right branch of 'out'.
-          ,(mk-node c-right 'C)
-          ,(mk-wire in 'r c-right 'p)
-          ,(mk-wire c-right 'l out 'r)))))
+  (if (eq? in out)
+      `(par ,(mk-node out 'A))
+      (let ((c-left (gensym "c-left-"))
+            (c-right (gensym "c-right-")))
+        `(nu (,c-left ,c-right)
+             (par
+              ,(mk-node out 'A)
+              ,(mk-node c-left 'C)
+              ,(mk-wire in 'l c-left 'p)
+              ,(mk-wire c-left 'l out 'l)
+              ,(mk-node c-right 'C)
+              ,(mk-wire in 'r c-right 'p)
+              ,(mk-wire c-right 'l out 'r))))))
 
 (define (IC_AND in1-port in2-port out-node)
-  ;; out = IF in1 THEN in2 ELSE in1 (which is FALSE)
   `(par
     ,(mk-node out-node 'A)
     ,(IC_IF in1-port in2-port in1-port out-node)))
 
 (define (IC_OR in1-port in2-port out-node)
-  ;; out = IF in1 THEN in1 (which is TRUE) ELSE in2
   `(par
     ,(mk-node out-node 'A)
     ,(IC_IF in1-port in1-port in2-port out-node)))
 
 (define (IC_NOT in-port out-node)
-  ;; out = IF in THEN FALSE ELSE TRUE
   (let ((true-node (gensym "true-"))
         (false-node (gensym "false-")))
     `(nu (,true-node ,false-node)
@@ -194,68 +154,28 @@
           ,(IC_IF in-port (list false-node 'r) (list true-node 'r) out-node)))))
 
 (define (IC_PRIM_ADD in1 in2 out)
-  (let* ((s1 (if (symbol? in1) (symbol->string in1) (symbol->string (car in1))))
-         (s2 (if (symbol? in2) (symbol->string in2) (symbol->string (car in2))))
-         )
-    (cond
-     ;; church + church -> church-(n+m)
-     ((and (string-prefix? "church-" s1)
-           (string-prefix? "church-" s2))
-      (let* ((n1 (string->number (substring s1 7)))
-             (n2 (string->number (substring s2 7)))
-             (sum (+ (if n1 n1 0) (if n2 n2 0)))
-             (res (string->symbol (format-string #f "church-~a" sum))))
-        `(nu (,res)
-             (par
-              ,(mk-node res 'A)
-              ,(mk-node out 'A)
-              ;; expose the computed literal on out's aux port
-              ,(mk-wire res 'p out 'r)))))
-     ;; num + num -> num-(n+m)
-     ((and (string-prefix? "num-" s1)
-           (string-prefix? "num-" s2))
-      (let* ((n1 (string->number (substring s1 4)))
-             (n2 (string->number (substring s2 4)))
-             (sum (+ (if n1 n1 0) (if n2 n2 0)))
-             (res (string->symbol (format-string #f "num-~a" sum))))
-        `(nu (,res)
-             (par
-              ,(mk-node res 'A)
-              ,(mk-node out 'A)
-              ,(mk-wire res 'p out 'r)))))
-     (else
-      (let ((add-impl (gensym "add-"))
-            (c1 (gensym "c-")) (c2 (gensym "c-"))
-            (out-c (gensym "out-copy-")))
-        `(nu (,add-impl ,c1 ,c2 ,out-c)
-             (par
-              ,(mk-node add-impl 'A)
-              ,(mk-node c1 'C)
-              ,(mk-node c2 'C)
-              ,(wire-or-list in1 c1)
-              ,(wire-or-list in2 c2)
-              ,(mk-wire c1 'l add-impl 'l)
-              ,(mk-wire c2 'l add-impl 'r)
-              ,(mk-node out 'A)
-              ,(mk-node out-c 'C)
-              ,(mk-wire add-impl 'p out-c 'p)
-              ,(mk-wire out-c 'l out 'r))))))))
+  (let ((add-impl (gensym "add-"))
+        (c1 (gensym "c-")) (c2 (gensym "c-"))
+        (out-c (gensym "out-copy-")))
+    `(nu (,add-impl ,c1 ,c2 ,out-c)
+         (par
+          ,(mk-node add-impl 'A 'prim/add)
+          ,(mk-node c1 'C)
+          ,(mk-node c2 'C)
+          ,(wire-or-list in1 c1)
+          ,(wire-or-list in2 c2)
+          ,(mk-wire c1 'l add-impl 'l)
+          ,(mk-wire c2 'l add-impl 'r)
+          ,(mk-node out 'A)
+          ,(mk-node out-c 'C)
+          ,(mk-wire add-impl 'p out-c 'p)
+          ,(mk-wire out-c 'l out 'r)))))
 
 (define (IC_MK_TRUE b)
-  (let ((e (gensym "e_")))
-    `(nu (,e)
-         (par
-          ,(mk-node b 'A)
-          ,(mk-node e 'E)
-          ,(mk-wire b 'r e 'p)))))
+  `(par ,(mk-node b 'A 'lit/bool #t)))
 
 (define (IC_MK_FALSE b)
-  (let ((e (gensym "e_")))
-    `(nu (,e)
-         (par
-          ,(mk-node b 'A)
-          ,(mk-node e 'E)
-          ,(mk-wire b 'l e 'p)))))
+  `(par ,(mk-node b 'A 'lit/bool #f)))
 
 (define (IC_Y fn out)
   (let* ((y-node   (gensym "Y"))
@@ -265,7 +185,6 @@
          (res-node (gensym "Yres")))
     (mk-nu (list y-node dup-node app1 app2 res-node)
            (mk-par
-            ;; nodes
             (mk-node y-node 'A)
             (mk-node dup-node 'C)
             (mk-node app1 'A)
@@ -273,108 +192,119 @@
             (mk-node res-node 'A)
             (wire-or-list fn dup-node)
 
-            ;; duplicator outputs: supply two copies to app1 and app2
             (mk-wire dup-node 'l app1 'p)
             (mk-wire dup-node 'r app2 'p)
 
-            ;; app1: receives argument via y-node's left port
             (mk-wire app1 'l y-node 'l)
-            ;; app1's result is the argument for app2
             (mk-wire app1 'r app2 'l)
 
-            ;; app2's result is wired back to y-node's right port to form the recursion loop
             (mk-wire app2 'r y-node 'r)
 
-            ;; app1 produces a principal result; collect it at res-node
-            (mk-wire app1 'p res-node 'p)
+            (mk-wire y-node 'p res-node 'l)
 
-            ;; expose final result at out.p
             (mk-wire res-node 'p out 'p)))))
 
 
-(define (IC_CHURCH-RUN n out)
-  (let ((sym (string->symbol (format-string #f "church-~a" n))))
-    `(par
-      ,(mk-node sym 'A)
-      ,(mk-node out 'A)
-      ,(mk-wire sym 'p out 'p))))
+(define (normalize-ep maybe-ep default-port)
+  (if (symbol? maybe-ep) (list maybe-ep default-port) maybe-ep))
 
-(define (IC_CHURCH-APPLY church-id f-port x-port out-target)
-  (let* ((n (cond ((number? church-id) church-id)
-                  ((and (symbol? church-id)
-                        (let ((s (symbol->string church-id)))
-                          (and (>= (string-length s) 7) (string=? (substring s 0 7) "church-"))))
-                   (string->number (substring (symbol->string church-id) 7)))
-                  (else #f))))
-    (cond
-     ((eq? n #f)
-      (error "IC_CHURCH-APPLY: unsupported church identifier" church-id))
-     ((<= n 0)
-      ;; Zero: identity -> wire x to out
-      (let ((from-ep (if (symbol? x-port) (list x-port 'p) x-port))
-            (to-ep (if (symbol? out-target) (list out-target 'p) out-target)))
-        `(par ,@(if (symbol? out-target) (list (mk-node out-target 'A)) '())
-              (wire ,from-ep ,to-ep))))
-     (else
-      ;; Build n applicator nodes and a copier-tree that fans `f` to the left ports.
-      (letrec ((build-fanout
-                (lambda (input-port k)
-                  (if (<= k 1)
-                      (cons (list input-port) #f)
-                      (let* ((c-node (gensym "copier-"))
-                             (num-left (ceiling (/ k 2)))
-                             (num-right (floor (/ k 2)))
-                             (left-result (build-fanout (list c-node 'l) num-left))
-                             (right-result (build-fanout (list c-node 'r) num-right))
-                             (outputs (append (car left-result) (car right-result)))
-                             (left-net (cdr left-result))
-                             (right-net (cdr right-result))
-                             (children (filter (lambda (x) x) (list left-net right-net))))
-                        (cons outputs
-                              `(nu (,c-node)
-                                 (par
-                                  ,(mk-node c-node 'C)
-                                  ,(wire-or-list input-port c-node)
-                                  ,@children))))))))
-        (let* ((apps (letrec ((loop (lambda (k acc)
-                                      (if (= k 0)
-                                          (reverse acc)
-                                          (loop (- k 1) (cons (gensym "church-app-") acc))))))
-                       (loop n '())))
-               (app-node-forms (map (lambda (nm) (mk-node nm 'A)) apps))
-               (fan (build-fanout f-port n))
-               (outputs (car fan))
-               (copier-net (cdr fan))
-               (left-wires
-                (map (lambda (pair app)
-                       (let ((src-name (car pair))
-                             (src-port (cadr pair)))
-                         (mk-wire src-name src-port app 'l)))
-                     outputs apps))
-               (chain-wires
-                (letrec ((loop (lambda (lst acc)
-                                 (if (null? (cdr lst))
-                                     (reverse acc)
-                                     (let ((a (car lst)) (b (cadr lst)))
-                                       (loop (cdr lst) (cons (mk-wire a 'r b 'p) acc)))))))
-                  (loop apps '())))
-               (last (car (reverse apps)))
-               (last-wire (if (symbol? x-port)
-                              (mk-wire last 'r x-port 'p)
-                              (list 'wire (list last 'r) x-port)))
-               (out-wire (if (symbol? out-target)
-                             (mk-wire (car apps) 'p out-target 'p)
-                             (list 'wire (list (car apps) 'p) out-target))))
-          ;; assemble final s-expression
-          `(nu ,apps
-               (par
-                ,@(if copier-net (list copier-net) '())
-                ,@app-node-forms
-                ,@left-wires
-                ,@chain-wires
-                ,last-wire
-                ,@(if (symbol? out-target) (list (mk-node out-target 'A)) '())
-                ,out-wire))))))))
+(define (ensure-number n who)
+  (unless (number? n)
+    (error (string-append who ": first argument must be a number") n)))
+
+(define (gensyms prefix n)
+  (let loop ((k n) (acc '()))
+    (if (= k 0) (reverse acc)
+        (loop (- k 1) (cons (gensym prefix) acc)))))
+
+(define (church-zero-net x-port out-target)
+  (let ((from-ep (normalize-ep x-port 'p))
+        (to-ep   (normalize-ep out-target 'p)))
+    `(par ,@(if (symbol? out-target) (list (mk-node out-target 'A)) '())
+          (wire ,from-ep ,to-ep))))
+
+(define (build-copier-fanout input-ep k)
+  (letrec ((go (lambda (in k)
+                 (if (<= k 1)
+                     (cons (list in) #f)
+                     (let* ((c (gensym "copier-"))
+                            (nl (ceiling (/ k 2)))
+                            (nr (floor   (/ k 2)))
+                            (L (go (list c 'l) nl))
+                            (R (go (list c 'r) nr))
+                            (outs (append (car L) (car R)))
+                            (netL (cdr L)) (netR (cdr R))
+                            (kids (filter (lambda (x) x) (list netL netR))))
+                       (cons outs
+                             `(nu (,c)
+                                (par
+                                 ,(mk-node c 'C)
+                                 ,(wire-or-list in c)
+                                 ,@kids))))))))
+    (go input-ep k)))
+
+(define (make-apps n)
+  (gensyms "church-app-" n))
+
+(define (app-node-forms apps)
+  (map (lambda (nm) (mk-node nm 'A)) apps))
+
+(define (left-wires outputs apps)
+  (map (lambda (pair app)
+         (let ((src-name (car pair))
+               (src-port (cadr pair)))
+           (mk-wire src-name src-port app 'l)))
+       outputs apps))
+
+(define (chain-wires apps)
+  (let loop ((xs apps) (acc '()))
+    (if (null? (cdr xs)) (reverse acc)
+        (let ((a (car xs)) (b (cadr xs)))
+          (loop (cdr xs) (cons (mk-wire a 'r b 'p) acc))))))
+
+(define (last-wire apps x-port)
+  (let ((last (car (reverse apps))))
+    (if (symbol? x-port)
+        (mk-wire last 'r x-port 'p)
+        (list 'wire (list last 'r) x-port))))
+
+(define (out-wire apps out-target)
+  (let ((first (car apps)))
+    (if (symbol? out-target)
+        (mk-wire first 'p out-target 'p)
+        (list 'wire (list first 'p) out-target))))
+
+(define (assemble-church-net apps copier-net app-forms LWs CWs lastW out-target outW)
+  `(nu ,apps
+       (par
+        ,@(if copier-net (list copier-net) '())
+        ,@app-forms
+        ,@LWs
+        ,@CWs
+        ,lastW
+        ,@(if (symbol? out-target) (list (mk-node out-target 'A 'user/output)) '())
+        ,outW)))
+
+(define (IC_CHURCH-APPLY n f-port x-port out-target)
+  (ensure-number n "IC_CHURCH-APPLY")
+  (cond
+    ((<= n 0)
+     (church-zero-net x-port out-target))
+    (else
+     (let* ((f-ep        (normalize-ep f-port 'p))
+            (apps        (make-apps n))
+            (app-forms   (app-node-forms apps))
+            (fan         (build-copier-fanout f-ep n))
+            (outputs     (car fan))
+            (copier-net  (cdr fan))
+            (LWs         (left-wires outputs apps))
+            (CWs         (chain-wires apps))
+            (lastW       (last-wire apps x-port))
+            (outW        (out-wire  apps out-target)))
+       (assemble-church-net apps copier-net app-forms LWs CWs lastW
+                            out-target outW)))))
+
+
 
 (define (IC_PRIM_ADD_RUNTIME in1 in2 out)
   (IC_PRIM_ADD in1 in2 out))
@@ -382,7 +312,7 @@
 (define (IC_CONS head tail name)
   (let ((sym name))
     `(par
-      ,(mk-node sym 'A)
+      ,(mk-node sym 'A 'ds/cons)
       ,(if (symbol? head)
            (mk-wire head 'p sym 'l)
            (list 'wire head (list sym 'l)))
@@ -396,7 +326,7 @@
         (e2 (gensym "e_")))
     (mk-nu (list sym e1 e2)
            (mk-par
-            (mk-node sym 'A)
+            (mk-node sym 'A 'ds/nil)
             (mk-node e1 'E)
             (mk-node e2 'E)
             (mk-wire sym 'l e1 'p)
@@ -416,3 +346,129 @@
           ,(if (symbol? list-port) (mk-wire list-port 'p fold-n 'l) (list 'wire list-port (list fold-n 'l)))
           ,(if (symbol? acc-port) (mk-wire acc-port 'p fold-n 'r) (list 'wire acc-port (list fold-n 'r)))
           ,(mk-node out 'A)))))
+
+
+(define (IC_PURE_ID x-port out-node)
+  (let ((id-impl (gensym "id-impl-"))
+        (app      (gensym "app-")))
+    `(nu (,id-impl ,app)
+       (par
+        ,(mk-node id-impl 'A)
+        ,(mk-node app 'A)
+        ,(mk-node out-node 'A)
+        ,(wire-or-list x-port app 'l)
+        ,(mk-wire id-impl 'p app 'r)
+        ,(mk-wire app 'p out-node 'p)))))
+
+(define (IC_PURE_PAIR a-port b-port pair-out-node)
+  (let ((ap1 (gensym "pair-ap1-"))
+        (ap2 (gensym "pair-ap2-"))
+        (c-a (gensym "pair-ca-"))
+        (c-b (gensym "pair-cb-")))
+    `(nu (,ap1 ,ap2 ,c-a ,c-b)
+       (par
+        ,(mk-node pair-out-node 'A)
+        ,(mk-node ap1 'A)
+        ,(mk-node ap2 'A)
+        ,(mk-node c-a 'C)
+        ,(wire-or-list a-port c-a)
+        ,(mk-node c-b 'C)
+        ,(wire-or-list b-port c-b)
+        ,(mk-wire pair-out-node 'l ap1 'l)
+        ,(mk-wire c-a 'l ap1 'r)
+        ,(mk-wire ap1 'p ap2 'l)
+        ,(mk-wire c-b 'l ap2 'r)
+        ,(mk-wire ap2 'p pair-out-node 'p)))))
+
+(define (IC_PURE_FST pair-port out-node)
+  (let ((K     (gensym "fst-K-"))
+        (k-ap1 (gensym "fst-kap1-"))
+        (k-ap2 (gensym "fst-kap2-"))
+        (app   (gensym "fst-app-"))
+        (drop  (gensym "fst-drop-")))
+    `(nu (,K ,k-ap1 ,k-ap2 ,app ,drop)
+       (par
+        ,(mk-node out-node 'A)
+        ,(mk-node K 'A)
+        ,(mk-node k-ap1 'A)
+        ,(mk-node k-ap2 'A)
+        ,(mk-node drop 'E)
+        ,(mk-wire K 'l k-ap2 'p)
+        ,(mk-wire k-ap2 'l drop 'p)
+
+        ,(mk-node app 'A)
+        ,(wire-or-list (list (car pair-port) 'l) K 'p)
+        ,(mk-wire K 'p app 'l)
+        ,(mk-wire app 'p out-node 'p))))) 
+
+(define (IC_PURE_SND pair-port out-node)
+  (let ((Kp   (gensym "snd-Kp-"))
+        (kp1  (gensym "snd-kp1-"))
+        (kp2  (gensym "snd-kp2-"))
+        (app  (gensym "snd-app-"))
+        (drop (gensym "snd-drop-")))
+    `(nu (,Kp ,kp1 ,kp2 ,app ,drop)
+       (par
+        ,(mk-node out-node 'A)
+        ,(mk-node Kp 'A)
+        ,(mk-node kp1 'A)
+        ,(mk-node kp2 'A)
+        ,(mk-node drop 'E)
+        ,(mk-wire Kp 'l drop 'p)
+        ,(mk-wire kp1 'l kp1 'p)
+        ,(mk-node app 'A)
+        ,(wire-or-list (list (car pair-port) 'l) Kp 'p)
+        ,(mk-wire Kp 'p app 'l)
+        ,(mk-wire app 'p out-node 'p))))) 
+
+(define (IC_PURE_LEFT a-port left-out-node)
+  (let ((c-a (gensym "left-ca-"))
+        (app1 (gensym "left-app1-"))
+        (f2 (gensym "left-f2-"))
+        (drop (gensym "left-drop-")))
+    `(nu (,c-a ,app1 ,f2 ,drop)
+       (par
+        ,(mk-node left-out-node 'A)
+        ,(mk-node c-a 'C)
+        ,(wire-or-list a-port c-a)
+        ,(mk-node f2 'A)
+        ,(mk-node drop 'E)
+        ,(mk-wire f2 'l drop 'p)
+        ,(mk-node app1 'A)
+        ,(mk-wire left-out-node 'l app1 'l)
+        ,(mk-wire c-a 'l app1 'r)
+        ,(mk-wire app1 'p f2 'p)
+        ,(mk-wire left-out-node 'p f2 'r)))))
+
+(define (IC_PURE_RIGHT b-port right-out-node)
+  (let ((c-b (gensym "right-cb-"))
+        (app1 (gensym "right-app1-"))
+        (f2 (gensym "right-f2-"))
+        (drop (gensym "right-drop-")))
+    `(nu (,c-b ,app1 ,f2 ,drop)
+       (par
+        ,(mk-node right-out-node 'A)
+        ,(mk-node drop 'E)
+        ,(mk-wire right-out-node 'l drop 'p)
+        ,(mk-node c-b 'C)
+        ,(wire-or-list b-port c-b)
+        ,(mk-node f2 'A)
+        ,(mk-node app1 'A)
+        ,(mk-wire f2 'l app1 'l)
+        ,(mk-wire c-b 'l app1 'r)
+        ,(mk-wire app1 'p f2 'p)
+        ,(mk-wire right-out-node 'p f2 'r)))))
+
+(define (IC_PURE_EITHER v-port l-port r-port out-node)
+  (let ((app1 (gensym "either-app1-"))
+        (app2 (gensym "either-app2-")))
+    `(par
+       ,(mk-node out-node 'A)
+       ,(mk-node app1 'A)
+       ,(mk-wire (car v-port) 'p app1 'l)
+       ,(wire-or-list l-port app1 'r)
+       ,(mk-node app2 'A)
+       ,(mk-wire app1 'p app2 'l)
+       ,(wire-or-list r-port app2 'r)
+       ,(mk-wire app2 'p out-node 'p))))
+
