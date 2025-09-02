@@ -1,5 +1,5 @@
 (define-module (icnu tools icnu-inject)
-  #:use-module (srfi srfi-1)
+  #:use-module (icnu utils internal)
   #:use-module (icnu icnu)
   #:use-module (icnu stdlib icnu-lib)
   #:export (generate-injection-form))

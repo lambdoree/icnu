@@ -1,5 +1,5 @@
 (define-module (icnu utils format)
-  #:export (format-string))
+  #:export (format-string icnu-format-string))
 
 (define (format-string destination fmt . args)
   (let ((str (apply simple-format fmt args)))
@@ -12,6 +12,10 @@
       (begin (display str destination) (force-output) str))
      (else
       (begin (display str) (force-output) str)))))
+
+;; New wrapper with icnu- prefix
+(define (icnu-format-string destination fmt . args)
+  (apply format-string destination fmt args))
 
 (define (simple-format fmt . args)
   (call-with-output-string

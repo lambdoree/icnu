@@ -438,7 +438,7 @@
         ,(mk-wire left-out-node 'l app1 'l)
         ,(mk-wire c-a 'l app1 'r)
         ,(mk-wire app1 'p f2 'p)
-        ,(mk-wire left-out-node 'p f2 'r)))))
+        ,(mk-wire left-out-node 'r f2 'r)))))
 
 (define (IC_PURE_RIGHT b-port right-out-node)
   (let ((c-b (gensym "right-cb-"))
@@ -457,18 +457,28 @@
         ,(mk-wire f2 'l app1 'l)
         ,(mk-wire c-b 'l app1 'r)
         ,(mk-wire app1 'p f2 'p)
-        ,(mk-wire right-out-node 'p f2 'r)))))
+        ,(mk-wire right-out-node 'r f2 'r)))))
 
 (define (IC_PURE_EITHER v-port l-port r-port out-node)
-  (let ((app1 (gensym "either-app1-"))
+  (let ((copy (gensym "either-copy-"))
+        (app1 (gensym "either-app1-"))
         (app2 (gensym "either-app2-")))
-    `(par
-       ,(mk-node out-node 'A)
-       ,(mk-node app1 'A)
-       ,(mk-wire (car v-port) 'p app1 'l)
-       ,(wire-or-list l-port app1 'r)
-       ,(mk-node app2 'A)
-       ,(mk-wire app1 'p app2 'l)
-       ,(wire-or-list r-port app2 'r)
-       ,(mk-wire app2 'p out-node 'p))))
+    `(nu (,copy ,app1 ,app2)
+         (par
+          ,(mk-node out-node 'A)
+          ,(mk-node copy 'C)
+          ,(mk-node app1 'A)
+          ,(mk-node app2 'A)
+          ;; duplicate the input value
+          ,(mk-wire (car v-port) 'p copy 'p)
+          ,(mk-wire copy 'l app1 'l)
+          ,(mk-wire copy 'r app2 'l)
+          ;; connect left function
+          ,(wire-or-list l-port app1 'r)
+          ;; chain left app output into right app input
+          ,(mk-wire app1 'p app2 'l)
+          ;; connect right function
+          ,(wire-or-list r-port app2 'r)
+          ;; final output
+          ,(mk-wire app2 'p out-node 'p)))))
 

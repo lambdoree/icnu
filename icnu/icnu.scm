@@ -1,26 +1,25 @@
 (define-module (icnu icnu)
-  #:use-module (ice-9 match)
-  #:use-module (srfi srfi-1)
+  #:use-module (icnu utils internal)
   #:use-module (srfi srfi-9)
-  #:use-module (srfi srfi-11)
   #:use-module (icnu utils format)
   #:use-module (icnu utils strings)
   #:use-module (icnu utils log)
+  #:use-module (ice-9 match)
   #:export (
-	    mk-node mk-wire mk-par mk-nu
-		    parse-net pretty-print
-		    empty-net copy-net make-fresh-name all-names node-agent endpoint valid-port?
-		    peer net-nodes net-links net-tags net-nu-set net-meta get-ports unlink-port!
-		    rewire! delete-node! all-nodes-with-agent find-active-pairs
-		    set-link-conflict-mode!
-		    *link-conflict-mode*
-		    mark-nu! inherit-nu!
-		    mark-temporary! unmark-temporary! temporary-endpoint?
-		    link-peers!
-		    add-node! set-node-tag! node-tag set-node-meta! node-meta
-		    <net>
-		    net?
-		    ))
+			mk-node mk-wire mk-par mk-nu
+					parse-net pretty-print
+					empty-net copy-net make-fresh-name all-names node-agent endpoint valid-port?
+					peer net-nodes net-links net-tags net-nu-set net-meta get-ports unlink-port!
+					rewire! delete-node! all-nodes-with-agent find-active-pairs
+					set-link-conflict-mode!
+					*link-conflict-mode*
+					mark-nu! inherit-nu!
+					mark-temporary! unmark-temporary! temporary-endpoint?
+					link-peers!
+					add-node! set-node-tag! node-tag set-node-meta! node-meta
+					<net>
+					net?
+					))
 
 
 (define-record-type <net>
@@ -139,28 +138,28 @@
                   (list 'b-port b-port 'peer pb))))
       ((replace-exact)
        (cond
-         ((and (equal? pa b-port) (equal? pb a-port)) n) ; R1: idempotent
-         ((and (equal? pa b-port) (not pb)) (hash-set! L b-port a-port)) ; R2: repair
-         ((and (equal? pb a-port) (not pa)) (hash-set! L a-port b-port)) ; R2: repair
-         ((and (not pa) (not pb))
-          (error "replace-exact: cannot create new link" a-port b-port))
-         (else
-          (error "replace-exact: existing links differ from the exact pair"
-                 (list 'a a-port 'peer pa) (list 'b b-port 'peer pb)))))
+        ((and (equal? pa b-port) (equal? pb a-port)) n) ; R1: idempotent
+        ((and (equal? pa b-port) (not pb)) (hash-set! L b-port a-port)) ; R2: repair
+        ((and (equal? pb a-port) (not pa)) (hash-set! L a-port b-port)) ; R2: repair
+        ((and (not pa) (not pb))
+         (error "replace-exact: cannot create new link" a-port b-port))
+        (else
+         (error "replace-exact: existing links differ from the exact pair"
+                (list 'a a-port 'peer pa) (list 'b b-port 'peer pb)))))
       ((inject-temporary)
        (let ((ta (temporary-endpoint? n a-port))
              (tb (temporary-endpoint? n b-port)))
          (cond
-           ((or ta tb)
-            (when (and ta (not tb) pb (not (equal? pb a-port)))
-              (error "inject-temporary: non-temp peer is busy" b-port pb))
-            (when (and tb (not ta) pa (not (equal? pa b-port)))
-              (error "inject-temporary: non-temp peer is busy" a-port pa))
-            (when pa (unlink-port! n a-port))
-            (when pb (unlink-port! n b-port))
-            (hash-set! L a-port b-port)
-            (hash-set! L b-port a-port))
-           (else (error "inject-temporary: neither endpoint is temporary" a-port b-port)))))
+          ((or ta tb)
+           (when (and ta (not tb) pb (not (equal? pb a-port)))
+             (error "inject-temporary: non-temp peer is busy" b-port pb))
+           (when (and tb (not ta) pa (not (equal? pa b-port)))
+             (error "inject-temporary: non-temp peer is busy" a-port pa))
+           (when pa (unlink-port! n a-port))
+           (when pb (unlink-port! n b-port))
+           (hash-set! L a-port b-port)
+           (hash-set! L b-port a-port))
+          (else (error "inject-temporary: neither endpoint is temporary" a-port b-port)))))
       (else (error "link-peers!: unknown conflict mode" mode)))))
 
 (define (unlink-port! n a-port)
@@ -172,7 +171,7 @@
         (hash-for-each (lambda (k v)
                          (when (equal? k a-port)
                            (set! key-to-remove k)))
-		       L)
+					   L)
         (when key-to-remove
           (hash-remove! L key-to-remove)))))
   n)
@@ -186,7 +185,7 @@
            (lambda (k v)
              (when (and (eq? (car k) (car a-port))
                         (eq? (cdr k) (cdr a-port)))
-	       (set! found v)))
+			   (set! found v)))
            (net-links n))
           found))))
 
@@ -253,7 +252,7 @@
     (letrec ((loop (lambda ()
                      (let* ((i (net-counter n))
                             (cand (string->symbol (format-string #f "~a-~a" prefix i))))
-		       (if (hash-ref (net-nodes n) cand #f)
+					   (if (hash-ref (net-nodes n) cand #f)
                            (begin (set-net-counter! n (+ i 1)) (loop))
                            (begin (set-net-counter! n (+ i 1)) cand))))))
       (loop))))
@@ -261,7 +260,7 @@
 (define (mark-nu! n name) (hash-set! (net-nu-set n) name #t) n)
 
 (define (inherit-nu! net new-node . parent-nodes)
-  (when (any (lambda (p) (hash-ref (net-nu-set net) p #f)) parent-nodes)
+  (when (icnu-any (lambda (p) (hash-ref (net-nu-set net) p #f)) parent-nodes)
     (mark-nu! net new-node)))
 
 
@@ -319,7 +318,7 @@
                 (ep2 (list-ref args 2)))
             (unless (and (symbol? a) (symbol? p)) (error "parse: bad 3-arg wire form" args))
             (values (endpoint a p) (parse-endpoint n ep2)))
-          ; (ep1 b q) form
+										; (ep1 b q) form
           (let ((ep1 (list-ref args 0))
                 (b (unquote-if-needed (list-ref args 1)))
                 (q (unquote-if-needed (list-ref args 2))))
@@ -350,76 +349,77 @@
      n)
     ((or ('wire . args)
          ('mk-wire . args))
-     (let-values (((e1 e2) (parse-wire-args n args)))
-       (link-peers! n e1 e2))
-     n)
-    ((or ('par . es)
-         ('mk-par . es))
-     (fold (lambda (form acc) (parse-1 acc form)) n es))
-    ((or ('nu names-form body)
-         ('mk-nu names-form body))
-     (let ((names (unquote-if-needed names-form)))
+     (call-with-values (lambda () (parse-wire-args n args))
+       (lambda (e1 e2)
+         (link-peers! n e1 e2)
+         n)))
+     ((or ('par . es)
+          ('mk-par . es))
+      (icnu-fold (lambda (form acc) (parse-1 acc form)) n es))
+     ((or ('nu names-form body)
+          ('mk-nu names-form body))
+      (let ((names (unquote-if-needed names-form)))
         (unless (list? names) (error "parse: nu names must be a list" names-form))
         (for-each (lambda (nm) (mark-nu! n nm)) names)
         (parse-1 n body)))
-    (else (error "parse: unknown form" form))))
+     (else (error "parse: unknown form" form))))
 
-(define (parse-net sexpr)
-  "Parse a surface sexpr into a net."
-  (parse-1 (empty-net) sexpr))
+  (define (parse-net sexpr)
+	"Parse a surface sexpr into a net."
+	(parse-1 (empty-net) sexpr))
 
-(define (pp-bool opt k dflt)
-  (let ((v (assq-ref opt k)))
-    (if (boolean? v) v dflt)))
+  (define (pp-bool opt k dflt)
+	(let ((v (assq-ref opt k)))
+      (if (boolean? v) v dflt)))
 
-(define (pretty-print net . maybe-opts)
-  (let* ((opts (if (null? maybe-opts) '() (car maybe-opts)))
-         (showV (pp-bool opts 'show-V? #f))
-         (showNu (pp-bool opts 'show-nu? #f))
-         (nodes (net-nodes net))
-         (links (net-links net)))
-    (define (visible-node? name)
-      (let ((ag (hash-ref nodes name)))
-        (or (not (eq? ag 'V)) showV)))
-    (define (visible-endpoint? ep)
-      (let ((nm (car ep)))
-        (visible-node? nm)))
-    (define nodes-out
-      (let ( (acc '()) )
-        (hash-for-each
-         (lambda (nm ag)
-           (when (visible-node? nm)
-             (let* ((tag (node-tag net nm))
-                    (sentinel (list 'sentinel))
-                    (meta (hash-ref (net-meta net) nm sentinel)))
-               (set! acc (cons (cond
-                                ((not (eq? meta sentinel)) `(node ,nm ,ag ,tag ,meta))
-                                ((not (eq? tag 'user/opaque)) `(node ,nm ,ag ,tag))
-                                (else `(node ,nm ,ag)))
-                               acc)))))
-         nodes)
-        (reverse acc)))
-    (define links-out
-      (let ((seen (make-hash-table))
-            (acc '()))
-        (hash-for-each
-         (lambda (a b)
-           (when (and (visible-endpoint? a) (visible-endpoint? b))
-             (let* ((ka (symbol->string (car a)))
-                    (kb (symbol->string (car b)))
-                    (key (if (string<? ka kb) (cons a b) (cons b a))))
-               (unless (hash-ref seen key #f)
-                 (hash-set! seen key #t)
-                 (set! acc (cons `(wire ,(list (car a) (cdr a))
-                                        ,(list (car b) (cdr b))) acc))))))
-	 links)
-        (reverse acc)))
-    (let ((body `(par ,@nodes-out ,@links-out)))
-      (if showNu
-          (let ((nu-names '()))
-            (hash-for-each (lambda (nm _v) (set! nu-names (cons nm nu-names)))
-			   (net-nu-set net))
-            `(nu ,(reverse nu-names) ,body))
-          body))))
+  (define (pretty-print net . maybe-opts)
+	(let* ((opts (if (null? maybe-opts) '() (car maybe-opts)))
+           (showV (pp-bool opts 'show-V? #f))
+           (showNu (pp-bool opts 'show-nu? #f))
+           (nodes (net-nodes net))
+           (links (net-links net)))
+      (define (visible-node? name)
+		(let ((ag (hash-ref nodes name)))
+          (or (not (eq? ag 'V)) showV)))
+      (define (visible-endpoint? ep)
+		(let ((nm (car ep)))
+          (visible-node? nm)))
+      (define nodes-out
+		(let ( (acc '()) )
+          (hash-for-each
+           (lambda (nm ag)
+			 (when (visible-node? nm)
+               (let* ((tag (node-tag net nm))
+                      (sentinel (list 'sentinel))
+                      (meta (hash-ref (net-meta net) nm sentinel)))
+				 (set! acc (cons (cond
+                                  ((not (eq? meta sentinel)) `(node ,nm ,ag ,tag ,meta))
+                                  ((not (eq? tag 'user/opaque)) `(node ,nm ,ag ,tag))
+                                  (else `(node ,nm ,ag)))
+								 acc)))))
+           nodes)
+          (reverse acc)))
+      (define links-out
+		(let ((seen (make-hash-table))
+              (acc '()))
+          (hash-for-each
+           (lambda (a b)
+			 (when (and (visible-endpoint? a) (visible-endpoint? b))
+               (let* ((ka (symbol->string (car a)))
+                      (kb (symbol->string (car b)))
+                      (key (if (string<? ka kb) (cons a b) (cons b a))))
+				 (unless (hash-ref seen key #f)
+                   (hash-set! seen key #t)
+                   (set! acc (cons `(wire ,(list (car a) (cdr a))
+                                          ,(list (car b) (cdr b))) acc))))))
+		   links)
+          (reverse acc)))
+      (let ((body `(par ,@nodes-out ,@links-out)))
+		(if showNu
+			(let ((nu-names '()))
+              (hash-for-each (lambda (nm _v) (set! nu-names (cons nm nu-names)))
+							 (net-nu-set net))
+              `(nu ,(reverse nu-names) ,body))
+			body))))
 
 

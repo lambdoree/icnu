@@ -1,6 +1,6 @@
 (define-module (icnu tools icnu-validate)
   #:use-module (icnu icnu)
-  #:use-module (srfi srfi-1)
+  #:use-module (icnu utils internal)
   #:export (validate-ir))
 
 

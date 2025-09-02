@@ -1,5 +1,5 @@
 (define-module (icnu eval)
-  #:use-module (srfi srfi-1)
+  #:use-module (icnu utils internal)
   #:use-module (icnu icnu)
   #:use-module (icnu rewrite)
   #:use-module (icnu utils format)

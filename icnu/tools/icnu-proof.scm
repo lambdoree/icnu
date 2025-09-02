@@ -1,6 +1,6 @@
 (define-module (icnu tools icnu-proof)
   #:use-module (ice-9 match)
-  #:use-module (srfi srfi-1)
+  #:use-module (icnu utils internal)
   #:use-module (icnu icnu)
   #:use-module (icnu rewrite)
   #:use-module (icnu eval)

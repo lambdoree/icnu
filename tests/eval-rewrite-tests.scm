@@ -1,6 +1,6 @@
 (use-modules (icnu utils format)
              (icnu utils assertions)
-             (srfi srfi-1)
+             (icnu utils internal)
              (icnu icnu)
              (icnu rewrite)
              (icnu utils strings)
