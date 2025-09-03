@@ -1,4 +1,9 @@
 (define-module (icnu utils internal)
+  #:use-module (icnu utils compat)
+  ;; compat: using icnu- prefixed API (icnu-make-hash-table, icnu-hash-ref, icnu-gensym, ...)
+  ;; Note: do NOT export `gensym` to avoid shadowing the Scheme core `gensym`.
+  ;; Do not re-export `icnu-gensym` from this internal module to avoid ambiguous
+  ;; multiple-import warnings; import (icnu utils compat) directly where gensym is needed.
   #:export (icnu-match icnu-fold
             normalize-ep ensure-number gensyms icnu-any icnu-filter icnu-map icnu-string-prefix? icnu-string-suffix?))
 
@@ -8,14 +13,16 @@
       maybe-ep))
 
 (define (ensure-number n who)
-  (unless (number? n)
-    (error (string-append who ": first argument must be a number") n)))
+  (if (not (number? n))
+      (error (string-append who ": first argument must be a number") n)))
 
 (define (gensyms prefix n)
+  ;; Use the compat-provided icnu-gensym directly to avoid introducing a
+  ;; local binding named `gensym` that would shadow the Scheme core binding.
   (let loop ((k n) (acc '()))
     (if (= k 0)
         (reverse acc)
-        (loop (- k 1) (cons (gensym prefix) acc)))))
+        (loop (- k 1) (cons (apply icnu-gensym (list prefix)) acc)))))
 
 (define (icnu-any pred lst)
   (cond ((null? lst) #f)
@@ -23,14 +30,16 @@
         (else (icnu-any pred (cdr lst)))))
 
 (define (icnu-filter pred lst)
+  ;; portable recursive filter (avoids relying on SRFI `filter`)
   (cond ((null? lst) '())
-        ((pred (car lst)) (cons (car lst) (filter pred (cdr lst))))
-        (else (filter pred (cdr lst)))))
+        ((pred (car lst)) (cons (car lst) (icnu-filter pred (cdr lst))))
+        (else (icnu-filter pred (cdr lst)))))
 
 (define (icnu-map proc lst)
+  ;; portable recursive map (avoids relying on SRFI `map`)
   (if (null? lst)
       '()
-      (cons (proc (car lst)) (map proc (cdr lst)))))
+      (cons (proc (car lst)) (icnu-map proc (cdr lst)))))
 
 (define (icnu-fold proc init lst)
   (let loop ((l lst) (acc init))

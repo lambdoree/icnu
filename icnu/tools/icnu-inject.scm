@@ -1,8 +1,14 @@
 (define-module (icnu tools icnu-inject)
   #:use-module (icnu utils internal)
+  #:use-module (icnu utils compat)
+  ;; compat: using icnu-gensym from compat module
   #:use-module (icnu icnu)
   #:use-module (icnu stdlib icnu-lib)
   #:export (generate-injection-form))
+
+;; Local gensym wrapper delegating to compat's icnu-gensym for portability.
+(define (gensym . maybe-prefix)
+  (apply icnu-gensym maybe-prefix))
 
 (define (generate-injection-form initial-values)
   (let ((acc '()))

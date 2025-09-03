@@ -1,5 +1,6 @@
 (define-module (icnu rewrite)
   #:use-module (icnu utils internal)
+  #:use-module (icnu utils compat)
   #:use-module (icnu utils strings)
   #:use-module (ice-9 match)
   #:use-module (icnu utils format)
@@ -93,13 +94,16 @@
          (memq tag '(lit/bool lit/num lit/str)))))
 
 (define (get-literal-value net node-name)
-  "Extract a Scheme value from a literal node's meta field."
+  "Extract a Scheme value from a literal node's meta field.
+If the stored meta is a quoted symbol (quote x), normalize and return x."
   (if (is-literal-node? net node-name)
       (let* ((sentinel (list 'sentinel))
              (meta-val (hash-ref (net-meta net) node-name sentinel)))
-		(if (eq? meta-val sentinel)
-			node-name
-			meta-val))
+        (if (eq? meta-val sentinel)
+            node-name
+            (if (and (pair? meta-val) (eq? (car meta-val) 'quote))
+                (cadr meta-val)
+                meta-val)))
       node-name))
 
 (define (ep-key ep)
@@ -266,20 +270,20 @@
 	changed?))
 
 (define (ensure-global-bool-node net val)
-  (let ((name (gensym "lit-bool-")))
-	(add-node! net name 'A)
-	(set-node-tag! net name 'lit/bool)
-	(set-node-meta! net name val)
-	(mark-nu! net name)
-	name))
+  (let ((name (icnu-gensym "lit-bool-")))
+    (add-node! net name 'A)
+    (set-node-tag! net name 'lit/bool)
+    (set-node-meta! net name val)
+    (mark-nu! net name)
+    name))
 
 (define (ensure-global-num-node net val)
-  (let ((name (gensym "lit-num-")))
-	(add-node! net name 'A)
-	(set-node-tag! net name 'lit/num)
-	(set-node-meta! net name val)
-	(mark-nu! net name)
-	name))
+  (let ((name (icnu-gensym "lit-num-")))
+    (add-node! net name 'A)
+    (set-node-tag! net name 'lit/num)
+    (set-node-meta! net name val)
+    (mark-nu! net name)
+    name))
 
 (define (rewrite-pass-if-fold! net)
   (let ((changed? #f))

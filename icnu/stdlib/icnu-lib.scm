@@ -1,5 +1,7 @@
 (define-module (icnu stdlib icnu-lib)
   #:use-module (icnu icnu)
+  #:use-module (icnu utils compat)
+  ;; compat: delegates gensym/gensyms to icnu-gensym/icnu-gensyms when needed
   #:use-module (icnu utils strings)
   #:use-module (icnu utils format)
   #:use-module (icnu utils helpers)
@@ -13,6 +15,11 @@
 			IC_PURE_ID IC_PURE_PAIR IC_PURE_FST IC_PURE_SND IC_PURE_LEFT IC_PURE_RIGHT
 			IC_PURE_EITHER
                         normalize-ep ensure-number gensyms))
+
+;; Provide a local gensym wrapper that delegates to compat's icnu-gensym,
+;; ensuring portability when running on Scheme implementations without native gensym.
+(define (gensym . maybe-prefix)
+  (apply icnu-gensym maybe-prefix))
 
 (define (mk-node name agent . args)
   `(node ,name ,agent ,@args))

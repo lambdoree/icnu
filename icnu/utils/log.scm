@@ -1,10 +1,12 @@
 (define-module (icnu utils log)
   #:use-module (icnu utils format)
+  #:use-module (icnu utils compat)
+  ;; compat: using icnu- prefixed API (icnu-make-parameter, icnu-hash-*, ...)
   #:export (debug-level? set-debug-level! set-debug-log!
            debugf warnf debugf-limited debug-once
            icnu-debugf icnu-warnf icnu-debugf-limited icnu-debug-once))
 
-(define *debug-level* (make-parameter 1))
+(define *debug-level* (icnu-make-parameter 1))
 
 (define (debug-level?) (*debug-level*))
 
@@ -31,14 +33,14 @@
 (define (icnu-warnf fmt . args)
   (apply warnf fmt args))
 
-(define *debug-counts* (make-hash-table))
+(define *debug-counts* (icnu-make-hash-table))
 
 (define (debugf-limited key limit level fmt . args)
   (when (>= (debug-level?) level)
     (let ((kstr (if (symbol? key) (symbol->string key) (format-string #f "~a" key))))
-      (let ((cnt (hash-ref *debug-counts* kstr 0)))
+      (let ((cnt (icnu-hash-ref *debug-counts* kstr 0)))
         (when (< cnt limit)
-          (hash-set! *debug-counts* kstr (+ cnt 1))
+          (icnu-hash-set! *debug-counts* kstr (+ cnt 1))
           (apply format-string (current-output-port) fmt args)
           (force-output (current-output-port)))))))
 
