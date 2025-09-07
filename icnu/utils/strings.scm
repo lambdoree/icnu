@@ -1,5 +1,5 @@
 (define-module (icnu utils strings)
-  #:export (string-contains? string-join-list string-split-char string-replace
+  #:export (string-contains? string-join-list string-split-char icnu-string-replace
            icnu-string-contains? icnu-string-join-list icnu-string-split-char))
 
 (define (string-contains? str substr)
@@ -44,7 +44,7 @@
 
 ;; string-replace: replace all occurrences of a single-character delimiter `old`
 ;; with the string `new`. Accepts `old` as a string of length 1 or a char.
-(define (string-replace s old new)
+(define (icnu-string-replace s old new)
   (let ((delim-char (cond
                      ((char? old) old)
                      ((string? old)

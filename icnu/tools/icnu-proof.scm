@@ -6,10 +6,12 @@
   #:use-module (icnu eval)
   #:use-module (icnu utils format)
   #:use-module (icnu utils log)
+  #:use-module (icnu tools icnu-mermaid)
   #:export (small-step-string big-step-string
             small-step-net big-step-net
             small-step-sequence-string small-step-sequence-net
             show-step-sequence run-steps-on-string
+            run-steps-on-string->mermaid
             demo-examples demo-run-examples))
 
 
@@ -277,3 +279,33 @@ instead of the full pretty-printed net to make outputs easier to read for large 
                         #t
                         (loop (+ i 1) next cur-str)))))))))
     #t)
+
+;; Write each small‑step net as a Mermaid file.
+;; Usage: (run-steps-on-string->mermaid s max-steps out-dir)
+;;   s          – ICNU program as a string
+;;   max-steps  – optional maximum number of steps (default 100)
+;;   out-dir    – optional directory to store .mmd files (default "mermaid-output")
+(define (run-steps-on-string->mermaid s . maybe-args)
+  "Run small‑step sequence on S and write each intermediate net as a Mermaid file.
+   ARGS: (max-steps out-dir) – both optional. max-steps defaults to 100, out-dir defaults to \"mermaid-output\"."
+  (let* ((max (if (and (pair? maybe-args) (number? (car maybe-args)))
+                  (car maybe-args) 100))
+         (out-dir (if (and (pair? maybe-args) (pair? (cdr maybe-args)))
+                     (cadr maybe-args) "mermaid-output"))
+         (sexpr (read-sexpr-from-string s))
+         (start-net (parse-net sexpr))
+         (seq (small-step-sequence-net start-net max)))
+    ;; ensure output directory exists
+    (let ((cmd (string-append "mkdir -p " out-dir)))
+      (system cmd))
+    (define (pad3 n)
+      (let ((s (number->string n)))
+        (cond ((< n 10) (string-append "00" s))
+              ((< n 100) (string-append "0" s))
+              (else s))))
+    (let loop ((nets seq) (i 0))
+      (when (pair? nets)
+        (let ((fname (string-append out-dir "/" (pad3 i) ".mmd")))
+          (write-mermaid-file (car nets) fname))
+        (loop (cdr nets) (+ i 1))))
+    #t))

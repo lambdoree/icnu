@@ -122,6 +122,6 @@
 (define (eval-icnu-string icnu-string . maybe-opts)
   "The main evaluation function. Parses a string, reduces it, and returns a result."
   (let* ((opts (if (null? maybe-opts) '() (car maybe-opts)))
-         (sexpr (read-sexpr-from-string icnu-string))
-         (net (parse-net sexpr)))
+     (sexpr (read-sexpr-from-string icnu-string))
+    (net (parse-net sexpr)))
     (eval-net net opts)))
