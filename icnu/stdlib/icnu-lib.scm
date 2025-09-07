@@ -5,6 +5,7 @@
   #:use-module (icnu utils strings)
   #:use-module (icnu utils format)
   #:use-module (icnu utils helpers)
+  #:use-module (icnu utils internal)
   #:export (IC_TRUE IC_FALSE IC_IF IC_Y
 		    JOIN-REPLACE JOIN-MAX
 		    IC_LITERAL IC_EQ_CONST IC_LT_CONST IC_GT_CONST
@@ -47,9 +48,9 @@
          (e-c (gensym "else-copy-")))
     `(nu (,if-impl ,c-c ,t-c ,e-c)
          (par
-          ,(mk-node out-node 'A)
+          ,(mk-node out-node 'A 'user/output "IF result output")
           
-          ,(mk-node if-impl 'A 'prim/if)
+          ,(mk-node if-impl 'A 'prim/if "Core IF agent")
           
           ,(mk-node c-c 'C)
           ,(wire-or-list c-port c-c)
@@ -97,7 +98,7 @@
          (c-x (gensym "app-x-")))
     `(nu (,c-f ,c-x)
          (par
-          ,(mk-node out-node 'A)
+          ,(mk-node out-node 'A 'user/apply-out "APPLY output node")
           ,(mk-node c-f 'C)
           ,(mk-node c-x 'C)
           ,(wire-or-list f-port c-f)
@@ -132,7 +133,7 @@
             (c-right (gensym "c-right-")))
         `(nu (,c-left ,c-right)
              (par
-              ,(mk-node out 'A)
+              ,(mk-node out 'A 'user/copier-out "COPY output node")
               ,(mk-node c-left 'C)
               ,(mk-wire in 'l c-left 'p)
               ,(mk-wire c-left 'l out 'l)
@@ -166,7 +167,7 @@
         (out-c (gensym "out-copy-")))
     `(nu (,add-impl ,c1 ,c2 ,out-c)
          (par
-          ,(mk-node add-impl 'A 'prim/add)
+          ,(mk-node add-impl 'A 'prim/add "Core ADD agent")
           ,(mk-node c1 'C)
           ,(mk-node c2 'C)
           ,(wire-or-list in1 c1)
@@ -192,11 +193,11 @@
          (res-node (gensym "Yres")))
     (mk-nu (list y-node dup-node app1 app2 res-node)
            (mk-par
-            (mk-node y-node 'A)
+            (mk-node y-node 'A 'y-comb "Y combinator structure")
             (mk-node dup-node 'C)
-            (mk-node app1 'A)
-            (mk-node app2 'A)
-            (mk-node res-node 'A)
+            (mk-node app1 'A 'y-comb "Y combinator app1")
+            (mk-node app2 'A 'y-comb "Y combinator app2")
+            (mk-node res-node 'A 'y-comb "Y combinator result output")
             (wire-or-list fn dup-node)
 
             (mk-wire dup-node 'l app1 'p)
@@ -241,7 +242,7 @@
                             (R (go (list c 'r) nr))
                             (outs (append (car L) (car R)))
                             (netL (cdr L)) (netR (cdr R))
-                            (kids (filter (lambda (x) x) (list netL netR))))
+                            (kids (icnu-filter (lambda (x) x) (list netL netR))))
                        (cons outs
                              `(nu (,c)
                                 (par
@@ -319,7 +320,7 @@
 (define (IC_CONS head tail name)
   (let ((sym name))
     `(par
-      ,(mk-node sym 'A 'ds/cons)
+      ,(mk-node sym 'A 'ds/cons "CONS cell")
       ,(if (symbol? head)
            (mk-wire head 'p sym 'l)
            (list 'wire head (list sym 'l)))
@@ -333,7 +334,7 @@
         (e2 (gensym "e_")))
     (mk-nu (list sym e1 e2)
            (mk-par
-            (mk-node sym 'A 'ds/nil)
+            (mk-node sym 'A 'ds/nil "NIL cell")
             (mk-node e1 'E)
             (mk-node e2 'E)
             (mk-wire sym 'l e1 'p)
@@ -367,66 +368,56 @@
         ,(mk-wire id-impl 'p app 'r)
         ,(mk-wire app 'p out-node 'p)))))
 
+;; icnu/icnu/stdlib/ic-lib.scm
+
+;; (a, b)를 Church 스타일로: pair의 왼쪽(l)에 “함수 f”를 꽂으면
+;; 내부의 두 앱(ap1, ap2)이 순차로 f a, (f a) b를 만들어 pair 'p로 결과를 내보냅니다.
 (define (IC_PURE_PAIR a-port b-port pair-out-node)
   (let ((ap1 (gensym "pair-ap1-"))
-        (ap2 (gensym "pair-ap2-"))
-        (c-a (gensym "pair-ca-"))
-        (c-b (gensym "pair-cb-")))
-    `(nu (,ap1 ,ap2 ,c-a ,c-b)
-       (par
-        ,(mk-node pair-out-node 'A)
-        ,(mk-node ap1 'A)
-        ,(mk-node ap2 'A)
-        ,(mk-node c-a 'C)
-        ,(wire-or-list a-port c-a)
-        ,(mk-node c-b 'C)
-        ,(wire-or-list b-port c-b)
-        ,(mk-wire pair-out-node 'l ap1 'l)
-        ,(mk-wire c-a 'l ap1 'r)
-        ,(mk-wire ap1 'p ap2 'l)
-        ,(mk-wire c-b 'l ap2 'r)
-        ,(mk-wire ap2 'p pair-out-node 'p)))))
+        (ap2 (gensym "pair-ap2-")))
+    `(par
+      ,(mk-node pair-out-node 'A)
+      ,(mk-node ap1 'A)
+      ,(mk-node ap2 'A)
+      ;; a, b 값을 각각 ap1/ap2의 인자로
+      ,(wire-or-list a-port ap1 'r)
+      ,(wire-or-list b-port ap2 'r)
+      ;; pair의 l은 함수 f가 들어올 자리 → ap1의 l로 흘러 f a를 만든다
+      ,(mk-wire pair-out-node 'l ap1 'l)
+      ;; (f a)를 ap2의 l로 넘기고, b를 적용하면 최종 결과
+      ,(mk-wire ap1 'p ap2 'l)
+      ,(mk-wire ap2 'p pair-out-node 'p))))
 
+;; FST: f = λa.λb. a  (첫번째 인수만)
 (define (IC_PURE_FST pair-port out-node)
-  (let ((K     (gensym "fst-K-"))
-        (k-ap1 (gensym "fst-kap1-"))
-        (k-ap2 (gensym "fst-kap2-"))
-        (app   (gensym "fst-app-"))
-        (drop  (gensym "fst-drop-")))
-    `(nu (,K ,k-ap1 ,k-ap2 ,app ,drop)
-       (par
-        ,(mk-node out-node 'A)
-        ,(mk-node K 'A)
-        ,(mk-node k-ap1 'A)
-        ,(mk-node k-ap2 'A)
-        ,(mk-node drop 'E)
-        ,(mk-wire K 'l k-ap2 'p)
-        ,(mk-wire k-ap2 'l drop 'p)
+  (let ((f    (gensym "fst-f-"))
+        (drop (gensym "fst-drop-"))
+        (pair-node (car (normalize-ep pair-port 'p))))
+    `(par
+      ,(mk-node out-node 'A)
+      ,(mk-node f 'A)
+      ,(mk-node drop 'E)
+      ;; f가 a,b를 받을 때: l로 들어온 a를 결과로, r로 들어온 b는 버린다
+      ,(mk-wire f 'l out-node 'p)
+      ,(mk-wire f 'r drop 'p)
+      ;; 핵심: pair의 l(함수 자리)에 f의 p(함수 값)를 직접 꽂는다.
+      ,(mk-wire pair-node 'l f 'p))))
 
-        ,(mk-node app 'A)
-        ,(wire-or-list (list (car pair-port) 'l) K 'p)
-        ,(mk-wire K 'p app 'l)
-        ,(mk-wire app 'p out-node 'p))))) 
-
+;; SND: f = λa.λb. b  (두번째 인수만)
 (define (IC_PURE_SND pair-port out-node)
-  (let ((Kp   (gensym "snd-Kp-"))
-        (kp1  (gensym "snd-kp1-"))
-        (kp2  (gensym "snd-kp2-"))
-        (app  (gensym "snd-app-"))
-        (drop (gensym "snd-drop-")))
-    `(nu (,Kp ,kp1 ,kp2 ,app ,drop)
-       (par
-        ,(mk-node out-node 'A)
-        ,(mk-node Kp 'A)
-        ,(mk-node kp1 'A)
-        ,(mk-node kp2 'A)
-        ,(mk-node drop 'E)
-        ,(mk-wire Kp 'l drop 'p)
-        ,(mk-wire kp1 'l kp1 'p)
-        ,(mk-node app 'A)
-        ,(wire-or-list (list (car pair-port) 'l) Kp 'p)
-        ,(mk-wire Kp 'p app 'l)
-        ,(mk-wire app 'p out-node 'p))))) 
+  (let ((f    (gensym "snd-f-"))
+        (drop (gensym "snd-drop-"))
+        (pair-node (car (normalize-ep pair-port 'p))))
+    `(par
+      ,(mk-node out-node 'A)
+      ,(mk-node f 'A)
+      ,(mk-node drop 'E)
+      ;; 첫번째 인수 a는 버리고, 두번째 인수 b를 결과로
+      ,(mk-wire f 'l drop 'p)
+      ,(mk-wire f 'r out-node 'p)
+      ;; pair의 l에 f를 꽂아 f a b를 실행
+      ,(mk-wire pair-node 'l f 'p))))
+
 
 (define (IC_PURE_LEFT a-port left-out-node)
   (let ((c-a (gensym "left-ca-"))

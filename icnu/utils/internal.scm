@@ -5,18 +5,19 @@
   ;; Do not re-export `icnu-gensym` from this internal module to avoid ambiguous
   ;; multiple-import warnings; import (icnu utils compat) directly where gensym is needed.
   #:export (icnu-match icnu-fold
-            normalize-ep ensure-number gensyms icnu-any icnu-filter icnu-map icnu-string-prefix? icnu-string-suffix?))
+                       icnu-normalize-ep icnu-ensure-number icnu-gensyms icnu-any icnu-filter icnu-map icnu-string-prefix? icnu-string-suffix?
+                       icnu-andmap))
 
-(define (normalize-ep maybe-ep default-port)
+(define (icnu-normalize-ep maybe-ep default-port)
   (if (symbol? maybe-ep)
       (list maybe-ep default-port)
       maybe-ep))
 
-(define (ensure-number n who)
+(define (icnu-ensure-number n who)
   (if (not (number? n))
       (error (string-append who ": first argument must be a number") n)))
 
-(define (gensyms prefix n)
+(define (icnu-gensyms prefix n)
   ;; Use the compat-provided icnu-gensym directly to avoid introducing a
   ;; local binding named `gensym` that would shadow the Scheme core binding.
   (let loop ((k n) (acc '()))
@@ -89,3 +90,19 @@
 ;; The original `match` macro is provided by Guile's `(ice-9 match)`.
 ;; This module only exports `icnu-match`; callers that need pattern matching
 ;; should import `(ice-9 match)` directly.
+(define (icnu-andmap p . lists)
+  (define (any-null? ls)
+    (cond ((null? ls) #f)
+          ((null? (car ls)) #t)
+          (else (any-null? (cdr ls)))))
+
+  (cond
+    ((null? lists) #t)                         ; (andmap p) ⇒ #t
+    (else
+     (let loop ((ls lists))
+       (if (any-null? ls)
+           #t
+           (let ((ok (apply p (map car ls))))
+             (if ok
+                 (loop (map cdr ls))
+                 #f)))))))

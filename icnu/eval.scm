@@ -32,8 +32,20 @@
   (let* ((opts (if (null? maybe-opts) '() (car maybe-opts)))
          (max-entry (assoc 'max-iter opts))
          (max-iter (if max-entry (cdr max-entry) 100))
-         (passes (let ((v (assq-ref opts 'passes))) (if v v (*default-reduction-passes*)))))
-    (let loop ((i 0))
+         ;; Retrieve passes option; if it's a procedure, call it to get the list.
+         (passes (let ((v (assq-ref opts 'passes)))
+                   (cond
+                     ((not v) (*default-reduction-passes*))          ; no passes option → default
+                     ((procedure? v) (v))                           ; passes is a thunk → call it
+                     ((and (list? v) (list? (car v))
+                           (icnu-andmap (lambda (x) (or (procedure? x) (symbol? x))) (car v)))
+                      ;; unwrap one level and resolve any symbols to procedures
+                      (map (lambda (p) (if (procedure? p) p (eval p (current-module)))) (car v)))
+                     ((list? v)
+                      ;; passes is already a list; resolve symbols to procedures
+                      (map (lambda (p) (if (procedure? p) p (eval p (current-module)))) v))
+                     (else (*default-reduction-passes*))))))
+(let loop ((i 0))
       (let ((errors (validate-ir net)))
         (when (not (null? errors))
           (error "reduce-net-to-normal-form: validation failed at step" i errors (pretty-print net '((show-nu? . #t))))))
@@ -53,7 +65,7 @@
 (define (common-ports) '(p r l))
 
 (define (ports-excluding primary)
-  (filter (lambda (p) (not (eq? p primary))) '(r l p)))
+  (icnu-filter (lambda (p) (not (eq? p primary))) '(r l p)))
 
 (define (resolve-ep->literal net ep)
   (let ((res (resolve-literal-ep net ep)))
@@ -123,5 +135,5 @@
   "The main evaluation function. Parses a string, reduces it, and returns a result."
   (let* ((opts (if (null? maybe-opts) '() (car maybe-opts)))
      (sexpr (read-sexpr-from-string icnu-string))
-    (net (parse-net sexpr)))
+    (net (parse-net sexpr (opt-ref opts 'use-nu? #t))))
     (eval-net net opts)))

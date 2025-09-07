@@ -30,7 +30,10 @@
 	(debugf 1 "rule-AA!: attempting on ~a and ~a\n" a-name b-name)
 	(let* ((a_p (cons a-name 'p)) (a_l (cons a-name 'l)) (a_r (cons a-name 'r))
 		   (b_p (cons b-name 'p)) (b_l (cons b-name 'l)) (b_r (cons b-name 'r))
-		   (X (peer net a_r)) (F (peer net b_l)) (Y (peer net b_r))
+		   (P_al (peer net a_l))
+		   (P_ar (peer net a_r))
+		   (P_bl (peer net b_l))
+		   (P_br (peer net b_r))
 		   (a-is-lit (is-literal-node? net a-name))
 		   (b-is-lit (is-literal-node? net b-name)))
 	  (cond
@@ -44,10 +47,13 @@
 			   (n_p (cons n_sym 'p)) (n_l (cons n_sym 'l)) (n_r (cons n_sym 'r)))
 		  (add-node! net n_sym 'A)
 		  (inherit-nu! net n_sym a-name b-name)
-		  (if F (rewire! net a_l F) (unlink-port! net a_l))
-		  (when Y (rewire! net n_l Y))
-		  (when X (rewire! net n_r X))
-		  (rewire! net a_p n_p)
+		  (unmark-nu! net a-name)
+		  (unmark-nu! net b-name)
+		  (unlink-port! net a_p) (unlink-port! net a_l) (unlink-port! net a_r)
+		  (unlink-port! net b_l) (unlink-port! net b_r)
+		  (when (and P_al P_bl) (link-peers! net P_al P_bl))
+		  (when P_ar (link-peers! net P_ar n_r))
+		  (when P_br (link-peers! net P_br n_l))
 		  (delete-node! net a-name)
 		  (delete-node! net b-name)
 		  (debugf 1 "rule-AA!: applied on ~a and ~a, created ~a\n" a-name b-name n_sym)
@@ -66,6 +72,7 @@
 			(when c-r-peer (rewire! net c-r-peer a-r))
 			(unlink-port! net (cons a-name 'p))
 			(delete-node! net c-name)
+			(debugf 1 "rule-AC!: applied on ~a and ~a\n" a-name c-name)
 			#t)))
 	  #f))
 
@@ -75,6 +82,7 @@
         (when (equal? e-p-peer (cons a-name 'p))
 		  (delete-node! net a-name)
 		  (delete-node! net e-name)
+		  (debugf 1 "rule-AE!: applied on ~a and ~a\n" a-name e-name)
 		  #t))
 	  #f))
 
@@ -84,6 +92,7 @@
         (when (equal? e-p-peer (cons c-name 'p))
 		  (delete-node! net c-name)
 		  (delete-node! net e-name)
+		  (debugf 1 "rule-CE!: applied on ~a and ~a\n" c-name e-name)
 		  #t))
 	  #f))
 
@@ -101,9 +110,18 @@ If the stored meta is a quoted symbol (quote x), normalize and return x."
              (meta-val (hash-ref (net-meta net) node-name sentinel)))
         (if (eq? meta-val sentinel)
             node-name
-            (if (and (pair? meta-val) (eq? (car meta-val) 'quote))
-                (cadr meta-val)
-                meta-val)))
+            (let* ((val (cond
+                         ((list? meta-val)
+                          (let ((v-pair (assq 'value meta-val)))
+                            (if v-pair
+                                (cdr v-pair)
+                                meta-val))) ; could be a (quote s)
+                         (else meta-val))))
+              (cond
+               ((and (pair? val) (eq? (car val) 'quote))
+                (cadr val))
+               ((list? val) node-name)
+               (else val)))))
       node-name))
 
 (define (ep-key ep)
@@ -209,7 +227,7 @@ If the stored meta is a quoted symbol (quote x), normalize and return x."
                                    (let ((p (peer net (cons n 'p)))
                                          (l (peer net (cons n 'l)))
                                          (r (peer net (cons n 'r))))
-                                     (let ((adds (filter (lambda (x) x)
+                                     (let ((adds (icnu-filter (lambda (x) x)
                                                          (list (and p (cons p (- k 1)))
                                                                (and l (cons l (- k 1)))
                                                                (and r (cons r (- k 1)))))))
@@ -234,7 +252,6 @@ If the stored meta is a quoted symbol (quote x), normalize and return x."
 							 (and r (eq? 'prim/if (node-tag net (car r))))))))
 			(unless skip?
               (when (rule-AC! net a c)
-				(debugf 1 "rule-AC!: applied on ~a and ~a\n" a c)
 				(set! changed? #t)))))
          (((c . 'C) (a . 'A))
           (let ((skip? (let ((p (peer net (cons c 'p)))
@@ -245,7 +262,6 @@ If the stored meta is a quoted symbol (quote x), normalize and return x."
 							 (and r (eq? 'prim/if (node-tag net (car r))))))))
 			(unless skip?
               (when (rule-AC! net a c)
-				(debugf 1 "rule-AC!: applied on ~a and ~a\n" a c)
 				(set! changed? #t)))))
          (_ #f)))
      pairs)
@@ -259,11 +275,9 @@ If the stored meta is a quoted symbol (quote x), normalize and return x."
        (match pair
          (((a . 'A) (e . 'E))
           (when (rule-AE! net a e)
-			(debugf 1 "rule-AE!: applied on ~a and ~a\n" a e)
 			(set! changed? #t)))
          (((e . 'E) (a . 'A))
           (when (rule-AE! net a e)
-			(debugf 1 "rule-AE!: applied on ~a and ~a\n" a e)
 			(set! changed? #t)))
          (_ #f)))
      pairs)

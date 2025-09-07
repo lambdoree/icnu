@@ -3,8 +3,11 @@
              (icnu utils internal)
              (icnu icnu)
              (icnu tools icnu-proof)
+             (icnu tools icnu-mermaid)
              (icnu utils log)
-             (tests test-runner))
+             (tests test-runner)
+             (ice-9 ftw)
+             (ice-9 popen))
 
 ;; 이 파일은 icnu/tools/icnu-proof.scm의 래퍼(작은/큰 단계, 요약 출력 등)에
 ;; 대해 누락될 수 있는 경계 동작을 보완하는 추가적인 단위 테스트들을 포함합니다.
@@ -36,8 +39,30 @@
       (assert-true ok "run-steps-on-string should return #t even when no steps occur")
       #t)))
 
+(define (test-mermaid-helpers)
+  (assert-eq (sanitize-id-ml 'a.b/c) "na_b_c" "sanitize-id-ml replaces special chars")
+  (assert-eq (sanitize-id-ml "123_ok") "n123_ok" "sanitize-id-ml handles numeric start")
+  (assert-eq (escape-ml-label "\"hello\"") "\\\"hello\\\"" "escape-ml-label handles quotes")
+  (assert-eq (escape-ml-label "a[b]") "a_b_" "escape-ml-label handles brackets")
+  #t)
+
+(define (test-run-steps-on-string->mermaid)
+  "run-steps-on-string->mermaid should create files in the specified directory"
+  (let* ((s "(par (node a A) (node b A) (wire (a p) (b p)))")
+         (out-dir "tests/mermaid-temp-test-output")
+         (cmd-rm (string-append "rm -rf " out-dir)))
+    (system cmd-rm) ; clean before
+    (assert-true (run-steps-on-string->mermaid s 5 out-dir) "run-steps...->mermaid should return #t")
+    (let* ((files (scandir out-dir (lambda (x) (not (string-prefix? "." x))))))
+      (assert-true (>= (length files) 2) "at least two mermaid files should be created")
+      (assert-true (string-suffix? ".mmd" (car files)) "files should have .mmd extension"))
+    (system cmd-rm) ; clean after
+    #t))
+
 (run-tests "ProofAPI-Extra"
            (list
             test-small-step-no-op
             test-small-step-string_no_change
-            test-run-steps-terminates-when-no-change))
+            test-run-steps-terminates-when-no-change
+            test-mermaid-helpers
+            test-run-steps-on-string->mermaid))

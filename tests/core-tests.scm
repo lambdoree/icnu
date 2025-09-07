@@ -265,6 +265,14 @@
   (assert-eq (string-split-char "" #\-) '("") "string-split-char empty string")
   #t)
 
+(define (test-string-replace-char)
+  (assert-eq (string-replace-char "a-b-c" "-" "_") "a_b_c" "string-replace-char basic")
+  (assert-eq (string-replace-char "a-b-c" #\- "_") "a_b_c" "string-replace-char with char")
+  (assert-eq (string-replace-char "abc" "x" "y") "abc" "string-replace-char no-op")
+  (assert-eq (string-replace-char "aaa" "a" "b") "bbb" "string-replace-char multiple")
+  (assert-eq (string-replace-char "aaa" "a" "bb") "bbbbbb" "string-replace-char with longer replacement")
+  #t)
+
 (define (test-debug-log-levels)
   (let ((original-level (debug-level?)))
     (set-debug-level! 5)
@@ -289,6 +297,16 @@
 (define (test-wire-or-list)
   (assert-eq (wire-or-list 'a 'b) '(wire (a p) (b p)) "wire-or-list with symbols")
   (assert-eq (wire-or-list '(a l) 'b) '(wire (a l) (b p)) "wire-or-list with source endpoint")
+  #t)
+
+(define (test-parse-net-disallows-nu-when-disabled)
+  (assert-true
+   (catch #t
+     (lambda ()
+       (parse-net '(nu (x) (par (node x A))) #f)
+       #f) ; return #f on success (no error)
+     (lambda args #t)) ; return #t on error
+   "parse-net with use-nu? #f should error on (nu ...)")
   #t)
 
 (define (test-log-output-functions)
@@ -336,7 +354,9 @@
             test-string-contains
             test-string-join-list
             test-string-split-char
+            test-string-replace-char
             test-debug-log-levels
             test-format-string
             test-wire-or-list
-            test-log-output-functions))
+            test-log-output-functions
+            test-parse-net-disallows-nu-when-disabled))

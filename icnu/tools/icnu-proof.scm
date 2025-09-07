@@ -10,9 +10,8 @@
   #:export (small-step-string big-step-string
             small-step-net big-step-net
             small-step-sequence-string small-step-sequence-net
-            show-step-sequence run-steps-on-string
-            run-steps-on-string->mermaid
-            demo-examples demo-run-examples))
+            run-steps-on-string
+            run-steps-on-string->mermaid))
 
 
 (define (ensure-global-lit-node net tag val prefix)

@@ -11,18 +11,6 @@
 
 (set-debug-level! 0)
 
-
-
-
-(define (test-small-step-net-applies-AE-legacy)
-  "Legacy version of the AE test – retained for reference but not used in the test suite."
-  (let* ((net (parse-net '(par (node a A) (node e E) (wire (a p) (e p)))))
-         (next (small-step-net net)))
-    (assert-true next "small-step-net returned a net")
-    (assert-false (node-agent next 'a) "node 'a' removed by AE")
-    (assert-false (node-agent next 'e) "node 'e' removed by AE")
-    #t))
-
 (define test-str
   "(nu () (par (node n2 A lit/num 2) (node n4 A lit/num 4) (node s-lt A lit/str lt) (node s-gt A lit/str ge) (node s-eqL A lit/str lt-eq-left) (node add A prim/add) (node lt1 A prim/lt) (node if1 A prim/if) (node cc1 C) (node lt2 A prim/lt) (node if2 A prim/if) (node cc2 C) (node c2 C) (node c4a C) (node c4b C) (node out A) (wire (c2 p) (n2 p)) (wire (add l) (c2 l)) (wire (add r) (c2 r)) (wire (lt1 l) (add p)) (wire (c4a p) (n4 p)) (wire (lt1 r) (c4a l)) (wire (c4b p) (c4a r)) (wire (lt2 l) (c4b l)) (wire (lt2 r) (c4b r)) (wire (cc1 p) (lt1 p)) (wire (if1 l) (s-lt p)) (wire (if1 r) (if2 p)) (wire (cc1 l) (if1 p)) (wire (cc1 r) (out p)) (wire (cc2 p) (lt2 p)) (wire (if2 l) (s-eqL p)) (wire (if2 r) (s-gt p))))"
   )
@@ -81,29 +69,6 @@
                  "either big-step or small-step produced a merged node with prefix a-0")
     #t))
 
-(define (test-pure-icnu-either-laws)
-  "Tests laws from notice.cm on pure ICnu Either constructs.
-   Simplified to avoid exercising the IC_PURE_EITHER assembly (which can
-   create conflicting links in the current implementation). This keeps the
-   observable-law checks but bypasses the problematic macro."
-  (let* ((l-val "is-left")
-         (sexpr `(par
-                  ,(IC_LITERAL l-val 'l-val)
-                  ,(mk-node 'result 'A)
-                  ,(mk-wire 'l-val 'p 'result 'p)))
-         (net (parse-net sexpr))
-         (res (eval-net net '((out-name . result)))))
-    (assert-eq res l-val "EITHER(LEFT a) l r should be l a -> l-val"))
-
-  (let* ((r-val "is-right")
-         (sexpr `(par
-                  ,(IC_LITERAL r-val 'r-val)
-                  ,(mk-node 'result 'A)
-                  ,(mk-wire 'r-val 'p 'result 'p)))
-         (net (parse-net sexpr))
-         (res (eval-net net '((out-name . result)))))
-    (assert-eq res r-val "EITHER(RIGHT b) l r should be r b -> r-val"))
-  #t)
 
 (define (test-small-step-string-basic)
   "small-step-string이 동작하고 문자열을 반환하는지 확인"
@@ -141,5 +106,4 @@
             test-big-step-string-basic
             test-small-step-net-applies-AE
             test-run-steps-print
-			test-pure-icnu-either-laws
 			))

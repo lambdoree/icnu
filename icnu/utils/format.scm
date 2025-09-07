@@ -1,21 +1,5 @@
 (define-module (icnu utils format)
-  #:export (format-string icnu-format-string))
-
-(define (format-string destination fmt . args)
-  (let ((str (apply simple-format fmt args)))
-    (cond
-     ((eq? destination #f)
-      str)
-     ((eq? destination #t)
-      (begin (display str) (force-output) str))
-     ((not (boolean? destination))
-      (begin (display str destination) (force-output) str))
-     (else
-      (begin (display str) (force-output) str)))))
-
-;; New wrapper with icnu- prefix
-(define (icnu-format-string destination fmt . args)
-  (apply format-string destination fmt args))
+  #:export (format-string))
 
 (define (simple-format fmt . args)
   (call-with-output-string
@@ -38,3 +22,15 @@
                      (else
                       (begin (display c port) (loop (cdr chars) current-args)))))
                  (begin (display c port) (loop (cdr chars) current-args)))))))))
+
+(define (format-string destination fmt . args)
+  (let ((str (apply simple-format fmt args)))
+    (cond
+     ((eq? destination #f)
+      str)
+     ((eq? destination #t)
+      (begin (display str) (force-output) str))
+     ((not (boolean? destination))
+      (begin (display str destination) (force-output) str))
+     (else
+      (begin (display str) (force-output) str)))))
