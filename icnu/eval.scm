@@ -32,17 +32,14 @@
   (let* ((opts (if (null? maybe-opts) '() (car maybe-opts)))
          (max-entry (assoc 'max-iter opts))
          (max-iter (if max-entry (cdr max-entry) 100))
-         ;; Retrieve passes option; if it's a procedure, call it to get the list.
          (passes (let ((v (assq-ref opts 'passes)))
                    (cond
-                     ((not v) (*default-reduction-passes*))          ; no passes option → default
-                     ((procedure? v) (v))                           ; passes is a thunk → call it
+                     ((not v) (*default-reduction-passes*))
+                     ((procedure? v) (v))
                      ((and (list? v) (list? (car v))
                            (icnu-andmap (lambda (x) (or (procedure? x) (symbol? x))) (car v)))
-                      ;; unwrap one level and resolve any symbols to procedures
                       (map (lambda (p) (if (procedure? p) p (eval p (current-module)))) (car v)))
                      ((list? v)
-                      ;; passes is already a list; resolve symbols to procedures
                       (map (lambda (p) (if (procedure? p) p (eval p (current-module)))) v))
                      (else (*default-reduction-passes*))))))
 (let loop ((i 0))
@@ -126,13 +123,11 @@
   )
 
 (define (eval-net net . maybe-opts)
-  "Reduces a net to normal form and extracts a result."
   (let* ((opts (if (null? maybe-opts) '() (car maybe-opts)))
          (reduced-net (reduce-net-to-normal-form net opts)))
     (extract-result-from-net reduced-net opts)))
 
 (define (eval-icnu-string icnu-string . maybe-opts)
-  "The main evaluation function. Parses a string, reduces it, and returns a result."
   (let* ((opts (if (null? maybe-opts) '() (car maybe-opts)))
      (sexpr (read-sexpr-from-string icnu-string))
     (net (parse-net sexpr (opt-ref opts 'use-nu? #t))))

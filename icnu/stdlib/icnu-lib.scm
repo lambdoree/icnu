@@ -1,7 +1,6 @@
 (define-module (icnu stdlib icnu-lib)
   #:use-module (icnu icnu)
   #:use-module (icnu utils compat)
-  ;; compat: delegates gensym/gensyms to icnu-gensym/icnu-gensyms when needed
   #:use-module (icnu utils strings)
   #:use-module (icnu utils format)
   #:use-module (icnu utils helpers)
@@ -17,8 +16,6 @@
 			IC_PURE_EITHER
                         normalize-ep ensure-number gensyms))
 
-;; Provide a local gensym wrapper that delegates to compat's icnu-gensym,
-;; ensuring portability when running on Scheme implementations without native gensym.
 (define (gensym . maybe-prefix)
   (apply icnu-gensym maybe-prefix))
 
@@ -214,7 +211,7 @@
 
 
 (define (normalize-ep maybe-ep default-port)
-  (if (symbol? maybe-ep) (list maybe-ep default-port) maybe-ep))
+  (icnu-normalize-ep maybe-ep default-port))
 
 (define (ensure-number n who)
   (unless (number? n)
@@ -368,10 +365,6 @@
         ,(mk-wire id-impl 'p app 'r)
         ,(mk-wire app 'p out-node 'p)))))
 
-;; icnu/icnu/stdlib/ic-lib.scm
-
-;; (a, b)를 Church 스타일로: pair의 왼쪽(l)에 “함수 f”를 꽂으면
-;; 내부의 두 앱(ap1, ap2)이 순차로 f a, (f a) b를 만들어 pair 'p로 결과를 내보냅니다.
 (define (IC_PURE_PAIR a-port b-port pair-out-node)
   (let ((ap1 (gensym "pair-ap1-"))
         (ap2 (gensym "pair-ap2-")))
@@ -388,7 +381,6 @@
       ,(mk-wire ap1 'p ap2 'l)
       ,(mk-wire ap2 'p pair-out-node 'p))))
 
-;; FST: f = λa.λb. a  (첫번째 인수만)
 (define (IC_PURE_FST pair-port out-node)
   (let ((f    (gensym "fst-f-"))
         (drop (gensym "fst-drop-"))
@@ -397,13 +389,10 @@
       ,(mk-node out-node 'A)
       ,(mk-node f 'A)
       ,(mk-node drop 'E)
-      ;; f가 a,b를 받을 때: l로 들어온 a를 결과로, r로 들어온 b는 버린다
       ,(mk-wire f 'l out-node 'p)
       ,(mk-wire f 'r drop 'p)
-      ;; 핵심: pair의 l(함수 자리)에 f의 p(함수 값)를 직접 꽂는다.
       ,(mk-wire pair-node 'l f 'p))))
 
-;; SND: f = λa.λb. b  (두번째 인수만)
 (define (IC_PURE_SND pair-port out-node)
   (let ((f    (gensym "snd-f-"))
         (drop (gensym "snd-drop-"))
@@ -412,10 +401,8 @@
       ,(mk-node out-node 'A)
       ,(mk-node f 'A)
       ,(mk-node drop 'E)
-      ;; 첫번째 인수 a는 버리고, 두번째 인수 b를 결과로
       ,(mk-wire f 'l drop 'p)
       ,(mk-wire f 'r out-node 'p)
-      ;; pair의 l에 f를 꽂아 f a b를 실행
       ,(mk-wire pair-node 'l f 'p))))
 
 

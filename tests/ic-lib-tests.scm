@@ -8,8 +8,6 @@
 
 (set-debug-level! 0)
 
-;; Helper to evaluate a net S-expression given an output node name.
-;; It parses using pure IC mode (use-nu? #f).
 (define (eval-sexpr sexpr out-name)
   (eval-net (parse-net sexpr #f) `((out-name . ,out-name))))
 

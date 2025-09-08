@@ -1,16 +1,3 @@
-;; 목적: 서로 다른 패스 적용 순서(기본 순서 vs 뒤집힌 순서 등)가 관찰자 관점의 결과(pretty-print 문자열)
-;; 에서 일관된 결과를 내는지 검증하는 간단한 confluence/관찰성 실험용 테스트 스크립트입니다.
-;;
-;; 사용법(프로젝트 루트에서):
-;;   guile -L . tests/confluence-tests.scm
-;; 또는 전체 테스트와 함께:
-;;   make test
-;; 어시스턴트 메모: 규칙(SEARCH/REPLACE 블록 포맷) 확인했습니다. 현재 변경은 최소한의 주석 추가 뿐이며,
-;; 이후 요청하신 변경은 동일한 형식의 SEARCH/REPLACE 블록으로 제안하겠습니다.
-;;
-;; 이 파일은 추가적인 빌드 변경 없이 독립적으로 실행 가능합니다.
-;; (테스트는 reduce-net-to-normal-form 호출 시 max-iter=1000을 사용하여 충분한 축약 기회를 제공합니다.)
-
 (use-modules (icnu utils format)
              (icnu utils assertions)
              (icnu icnu)
@@ -21,7 +8,6 @@
 
 (set-debug-level! 0)
 
-;; 재작성 패스의 "기본" 목록( eval.scm의 기본과 동일한 순서로 구성 )
 (define default-passes
   (list
    rewrite-pass-const-fold!
@@ -32,12 +18,10 @@
    rewrite-pass-CE-annihilation!
    rewrite-pass-wire-cleanup!))
 
-;; 헬퍼: 주어진 net을 주어진 패스 순서로 축약한 뒤 reduced net을 반환
 (define (reduce-with-passes net passes)
   (let ((opts (list (cons 'passes default-passes) (cons 'max-iter 1000))))
     (reduce-net-to-normal-form (copy-net net) opts)))
 
-;; 몇 가지 대표적인 넷 생성기 (테스트 파일들과 유사한 예제들)
 (define (make-const-fold-net)
   (parse-net
    '(par
@@ -93,8 +77,6 @@
      (node then-lit A)
      (node orphan C))))
 
-;; 실험 테스트 1: 기본 순서 vs 뒤집힌 순서
-;; 변경: pretty-print 문자열 자체를 비교하는 대신 '관찰자' 결과(출력 노드가 있으면 out 값, 그렇지 않으면 A 노드 수)를 비교합니다.
 (define (test-confluence-default-vs-reversed)
   (let ((nets (list (make-const-fold-net)
                     (make-if-fold-boolean-net)
@@ -120,8 +102,6 @@
      nets)
     #t))
 
-;; 실험 테스트 2: 국지적 교환(두 패스 위치를 바꾼 순서) — 추가 안전성 검사
-;; 변경: pretty-print 비교 대신 관찰자 기반 비교 사용
 (define (test-confluence-swap-two)
   (let* ((p1 rewrite-pass-const-fold!)
          (p2 rewrite-pass-if-fold!)
@@ -144,7 +124,6 @@
      nets)
     #t))
 
-;; 실험 테스트 3: 랜덤화된 몇 가지 순서(소수 샘플)
 (define (shuffle lst)
   (let ((arr (list->vector lst))
         (n (length lst)))

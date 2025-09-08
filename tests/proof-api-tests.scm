@@ -17,7 +17,6 @@
 
 
 (define (test-aa-step-sequence)
-  "AA 병합의 단계별 시퀀스가 예상대로 생성되는지 확인"
   (let* ((s "(par (node a A) (node b A) (wire (a p) (b p)))")
          (sexpr (read-sexpr-from-string s))
          (net   (parse-net sexpr))
@@ -32,7 +31,6 @@
     #t))
 
 (define (test-const-fold-step)
-  "const-fold이 리터럴 입력(2,3)으로 2<3을 평가하여 #t로 축약하는지 확인"
   (let* ((s "(par (node lt1 A 'prim/lt) (node n2 A 'lit/num 2) (node n3 A 'lit/num 3) (node out A) (wire (n2 p) (lt1 l)) (wire (n3 p) (lt1 r)) (wire (lt1 p) (out p)))")
          (res (small-step-string s)))
     (assert-true res "small-step-string returned something for const-fold")
@@ -40,14 +38,12 @@
     #t))
 
 (define (test-if-fold-step)
-  "prim/if와 참 조건의 if-fold가 동작하여 then-branch의 값을 선택하는지 확인"
   (let* ((s "(par (node if-impl A 'prim/if) (node cond-copy C) (node true A 'lit/bool #t) (node then-val A 'lit/str 'then) (node else-val A 'lit/str 'else) (node out A) (wire (true p) (cond-copy p)) (wire (cond-copy l) (if-impl p)) (wire (then-val p) (if-impl l)) (wire (else-val p) (if-impl r)) (wire (cond-copy r) (out p)))")
          (big (big-step-string s)))
     (assert-true (string-contains? big "then") "big-step selected then branch (output contains 'then')")
     #t))
 
 (define (test-church-small-vs-big)
-  "IC_CHURCH-APPLY의 small-step 시퀀스 마지막과 big-step 정규형이 관찰 가능한 out 노드를 갖는지 확인"
   (let* ((sexpr (IC_CHURCH-APPLY 3 'f 'x 'outc))
          (net (parse-net sexpr))
          (reduced (big-step-net (copy-net net) '((max-iter . 200)))))
@@ -58,7 +54,6 @@
     #t))
 
 (define (test-small-vs-big-agreement)
-  "작은 입력에 대해 small-step으로 완전히 줄였을 때와 big-step의 결과가 최소한 out 노드 유무 등 관찰자 측면에서 일치하는지 확인"
   (let* ((s "(par (node a A) (node b A) (wire (a p) (b p)))")
          (net (parse-net (read-sexpr-from-string s)))
          (big (big-step-net (copy-net net) '((max-iter . 50))))
@@ -71,21 +66,18 @@
 
 
 (define (test-small-step-string-basic)
-  "small-step-string이 동작하고 문자열을 반환하는지 확인"
   (let ((s "(par (node a A) (node b A) (wire (a p) (b p)))"))
     (let ((res (small-step-string s)))
       (assert-true res "small-step-string returned something")
       #t)))
 
 (define (test-big-step-string-basic)
-  "big-step-string이 동작하고 문자열을 반환하는지 확인"
   (let ((s "(par (node a A) (node b A) (wire (a p) (b p)))"))
     (let ((res (big-step-string s)))
       (assert-true res "big-step-string returned something")
       #t)))
 
 (define (test-small-step-net-applies-AE)
-  "small-step-net이 AE 규칙을 적용하여 A/E 쌍을 제거하는지 확인"
   (let* ((net (parse-net '(par (node a A) (node e E) (wire (a p) (e p)))))
          (next (small-step-net net)))
     (assert-true next "small-step-net returned a net")
@@ -94,7 +86,6 @@
     #t))
 
 (define (test-run-steps-print)
-  "run-steps-on-string 헬퍼가 #t을 반환하며 단계 출력을 수행하는지 확인"
   (let ((s test-str))
     (let ((ok (run-steps-on-string s 10)))
       (assert-true ok "run-steps-on-string returned #t")

@@ -175,7 +175,7 @@
 
 
 (define (normalize-ep maybe-ep default-port)
-  (if (symbol? maybe-ep) (list maybe-ep default-port) maybe-ep))
+  (icnu-normalize-ep maybe-ep default-port))
 
 (define (ensure-number n who)
   (unless (number? n)

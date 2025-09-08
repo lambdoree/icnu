@@ -1,7 +1,6 @@
 (define-module (icnu utils log)
   #:use-module (icnu utils format)
   #:use-module (icnu utils compat)
-  ;; compat: using icnu- prefixed API (icnu-make-parameter, icnu-hash-*, ...)
   #:export (debug-level? set-debug-level! set-debug-log!
            debugf warnf debugf-limited debug-once))
 

@@ -2,8 +2,6 @@
   #:export (icnu-make-hash-table icnu-hash-set! icnu-hash-ref icnu-hash-remove! icnu-hash-for-each
            icnu-gensym icnu-gensyms icnu-make-parameter))
 
-;; Simple alist-backed hash-table compatible shim.
-;; Table is represented as a one-element vector containing an association list.
 (define (icnu-make-hash-table) (vector '()))
 
 (define (alist-remove-key alist key)
@@ -44,7 +42,6 @@
           (loop (cdr lst)))))
   #t)
 
-;; Minimal gensym/gensyms implementation.
 (define icnu-gensym-counter (vector 0))
 (define (icnu-gensym . maybe-prefix)
   (let ((prefix (if (null? maybe-prefix) "g" (car maybe-prefix))))
@@ -56,9 +53,6 @@
     (if (= k 0) (reverse acc)
         (loop (- k 1) (cons (icnu-gensym prefix) acc)))))
 
-;; Minimal parameter implementation: returned object is a procedure that
-;; - when called with no args returns current value
-;; - when called with one arg sets the value and returns it
 (define (icnu-make-parameter init)
   (let ((box (vector init)))
     (lambda args

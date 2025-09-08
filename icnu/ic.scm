@@ -6,8 +6,7 @@
   #:use-module (icnu utils log)
   #:use-module (icnu utils compat)
   #:use-module (ice-9 match)
-  #:export (
-			      mk-node mk-wire mk-par mk-node-labeled
+  #:export (mk-node mk-wire mk-par mk-node-labeled
 					          ic-parse-net ic-pretty-print
 					          empty-net copy-net make-fresh-name all-names node-agent endpoint valid-port?
 					          peer net-nodes net-links net-tags net-meta get-ports unlink-port!
@@ -17,39 +16,33 @@
 					          mark-temporary! unmark-temporary! temporary-endpoint?
 					          link-peers!
 					          add-node! set-node-tag! node-tag set-node-meta! node-meta
+					          ic-meta-get ic-meta-set! ic-literal? ic-literal-value ic-make-literal-node!
 					          <net>
 					          net?
-                              plist-put plist-remove
+                    plist-put plist-remove
 					          pp-bool
 					          ))
-
 
 (define-record-type <net>
   (make-net nodes links counter tags tmp-endpoints meta)
   net?
-  (nodes net-nodes)     ;; hash name -> agent
-  (links net-links)     ;; hash (cons name port) -> (cons name port)
-  (counter net-counter set-net-counter!) ;; integer counter for fresh-name generation
-  (tags net-tags)       ;; hash name -> tag symbol
-  (tmp-endpoints net-tmp-endpoints) ;; hash endpoint -> #t
-  (meta net-meta))      ;; hash name -> literal value
+  (nodes net-nodes)
+  (links net-links)
+  (counter net-counter set-net-counter!)
+  (tags net-tags)
+  (tmp-endpoints net-tmp-endpoints)
+  (meta net-meta))
 
-(define (empty-net . args)
-  (let ((use-nu? (if (null? args) #t (car args))))
-    (make-net
-     (make-hash-table)          ; nodes
-     (make-hash-table)          ; links
-     0                          ; counter
-     (make-hash-table)          ; tags
-     (make-hash-table)          ; tmp-endpoints
-     (make-hash-table))))        ; meta
+(define (empty-net)
+  (make-net
+   (make-hash-table)          ; nodes
+   (make-hash-table)          ; links
+   0                          ; counter
+   (make-hash-table)          ; tags
+   (make-hash-table)          ; tmp-endpoints
+   (make-hash-table)))        ; meta
 
 (define (copy-net n)
-  "Deep-copy internal net tables to produce an independent net instance.
-   This implementation avoids parsing back into surface forms and instead
-   clones the underlying hash-tables and recreates fresh cons keys/values
-   for link entries so the returned net does not share mutable structures
-   with the source."
   (let ((nn (make-hash-table))
         (ll (make-hash-table))
         (tags_copy (make-hash-table))
@@ -68,7 +61,6 @@
     (make-net nn ll (net-counter n) tags_copy tmp_copy meta_copy)))
 
 (define (valid-port? p) (memq p '(p l r)))
-
 
 (define (get-ports agent-type)
   (case agent-type
@@ -97,7 +89,8 @@
   (hash-set! (net-tags n) name tag))
 
 (define (set-node-meta! n name val)
-  (hash-set! (net-meta n) name val))
+  (let ((store (if (eq? val #f) (cons 'value val) val)))
+    (hash-set! (net-meta n) name store)))
 
 (define (node-tag n name)
   (hash-ref (net-tags n) name 'user/opaque))
@@ -265,6 +258,52 @@
       (icnu-filter (lambda (p) (not (eq? (car p) key))) plist)
       plist))
 
+;; General meta access helpers (core-provided, safe abstraction over node-meta)
+(define (ic-meta-get net name key)
+  "Return the value associated to KEY in the node META for NAME, or #f."
+  (let ((meta (node-meta net name)))
+    (if (and (list? meta) (assq key meta))
+        (cdr (assq key meta))
+        #f)))
+
+(define (ic-meta-set! net name key val)
+  "Set KEY=VAL in the node META for NAME. Returns NET."
+  (let ((meta (node-meta net name)))
+    (set-node-meta! net name (plist-put meta key val))
+    net))
+
+(define (ic-literal? net name)
+  "Return #t if NAME has a literal tag."
+  (let ((tag (node-tag net name)))
+    (memq tag '(lit/bool lit/num lit/str)))
+
+  )
+
+(define (ic-literal-value net name)
+  (if (ic-literal? net name)
+      (let ((meta (node-meta net name)))
+        (if (eq? meta #f)
+            name
+            (let* ((v-pair (and (pair? meta) (list? meta) (assq 'value meta)))
+                   (val (cond
+                          (v-pair (cdr v-pair))
+                          ((and (pair? meta) (eq? (car meta) 'value)) (cdr meta))
+                          ((list? meta)
+                           (let ((vp (assq 'value meta)))
+                             (if vp (cdr vp) meta)))
+                          (else meta))))
+              (cond
+               ((and (pair? val) (eq? (car val) 'quote)) (cadr val))
+               ((list? val) name)
+               (else val)))))
+      name))
+
+(define (ic-make-literal-node! net name lit-tag lit-val)
+  (add-node! net name 'A)
+  (set-node-tag! net name lit-tag)
+  (set-node-meta! net name lit-val)
+  net)
+
 (define (make-fresh-name n . maybe-prefix)
   (let ((prefix (if (null? maybe-prefix) "n" (car maybe-prefix))))
     (letrec ((loop (lambda ()
@@ -293,16 +332,11 @@
                                 (else '())))))
 
 (define (unquote-if-needed x)
-  "Accepts a symbol or a quoted symbol `('quote s)` and returns the symbol."
   (if (and (pair? x) (eq? (car x) 'quote) (not (null? (cdr x))))
       (cadr x)
       x))
 
 (define (ensure-free-name-node! n name)
-  "If `name` is not already a node, create one as a 'V' (free name) node.
-   This enforces that all semantically meaningful nodes must be explicitly
-   declared with a `(node ...)` form, rather than being inferred from usage
-   on a wire."
   (unless (node-agent n name)
     (add-node! n name 'V)))
 
@@ -378,8 +412,6 @@
     ((or ('par . es)
          ('mk-par . es))
      (icnu-fold (lambda (form acc) (parse-1 acc form)) n es))
-    ((or ('nu . _) ('mk-nu . _))
-     (error "parse-1: nu binder encountered in pure IC mode. nu is not supported by this parser." form))
     (else (error "parse-1: Unrecognized form. Expected (node ...), (wire ...), or (par ...)." form))))
 
 (define (pp-bool opt k dflt)

@@ -97,32 +97,10 @@
 	  #f))
 
 (define (is-literal-node? net node-name)
-  "Return #t for nodes that are tagged as literals."
-  (and (symbol? node-name)
-       (let ((tag (node-tag net node-name)))
-         (memq tag '(lit/bool lit/num lit/str)))))
+  (ic-literal? net node-name))
 
 (define (get-literal-value net node-name)
-  "Extract a Scheme value from a literal node's meta field.
-If the stored meta is a quoted symbol (quote x), normalize and return x."
-  (if (is-literal-node? net node-name)
-      (let* ((sentinel (list 'sentinel))
-             (meta-val (hash-ref (net-meta net) node-name sentinel)))
-        (if (eq? meta-val sentinel)
-            node-name
-            (let* ((val (cond
-                         ((list? meta-val)
-                          (let ((v-pair (assq 'value meta-val)))
-                            (if v-pair
-                                (cdr v-pair)
-                                meta-val))) ; could be a (quote s)
-                         (else meta-val))))
-              (cond
-               ((and (pair? val) (eq? (car val) 'quote))
-                (cadr val))
-               ((list? val) node-name)
-               (else val)))))
-      node-name))
+  (ic-literal-value net node-name))
 
 (define (ep-key ep)
   (if (and (pair? ep) (symbol? (car ep)) (symbol? (cdr ep)))

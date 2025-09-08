@@ -1,9 +1,5 @@
 (define-module (icnu utils internal)
   #:use-module (icnu utils compat)
-  ;; compat: using icnu- prefixed API (icnu-make-hash-table, icnu-hash-ref, icnu-gensym, ...)
-  ;; Note: do NOT export `gensym` to avoid shadowing the Scheme core `gensym`.
-  ;; Do not re-export `icnu-gensym` from this internal module to avoid ambiguous
-  ;; multiple-import warnings; import (icnu utils compat) directly where gensym is needed.
   #:export (icnu-match icnu-fold
                        icnu-normalize-ep icnu-ensure-number icnu-gensyms icnu-any icnu-filter icnu-map icnu-string-prefix? icnu-string-suffix?
                        icnu-andmap))
@@ -31,13 +27,11 @@
         (else (icnu-any pred (cdr lst)))))
 
 (define (icnu-filter pred lst)
-  ;; portable recursive filter (avoids relying on SRFI `filter`)
   (cond ((null? lst) '())
         ((pred (car lst)) (cons (car lst) (icnu-filter pred (cdr lst))))
         (else (icnu-filter pred (cdr lst)))))
 
 (define (icnu-map proc lst)
-  ;; portable recursive map (avoids relying on SRFI `map`)
   (if (null? lst)
       '()
       (cons (proc (car lst)) (icnu-map proc (cdr lst)))))
@@ -60,14 +54,6 @@
     (and (<= suflen slen)
          (string=? suffix (substring str (- slen suflen) slen)))))
 
-;; icnu-match : pattern datum -> boolean
-;; Very small subset of `match` used in this project.
-;; Supports:
-;;   - literal symbols/numbers/strings
-;;   - (list ...) patterns
-;;   - (quote x) patterns
-;;   - (or pattern1 pattern2) via `or` in pattern list
-;;   - variable binding via symbols starting with `?` (e.g. ?x)
 (define (icnu-match pat datum)
   (cond
    ((symbol? pat)
@@ -87,9 +73,6 @@
            (icnu-match (cdr pat) (cdr datum))))))
    (else (equal? pat datum))))
 
-;; The original `match` macro is provided by Guile's `(ice-9 match)`.
-;; This module only exports `icnu-match`; callers that need pattern matching
-;; should import `(ice-9 match)` directly.
 (define (icnu-andmap p . lists)
   (define (any-null? ls)
     (cond ((null? ls) #f)

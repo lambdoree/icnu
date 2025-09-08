@@ -33,8 +33,6 @@
                   (cons (substring s start i) acc))
             (loop (+ i 1) start acc)))))
 
-;; string-replace-char: replace all occurrences of a single-character delimiter `old`
-;; with the string `new`. Accepts `old` as a string of length 1 or a char.
 (define (string-replace-char s old new)
   (let ((delim-char (cond
                      ((char? old) old)

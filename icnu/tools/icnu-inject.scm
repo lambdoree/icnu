@@ -6,7 +6,6 @@
   #:use-module (icnu stdlib icnu-lib)
   #:export (generate-injection-form))
 
-;; Local gensym wrapper delegating to compat's icnu-gensym for portability.
 (define (gensym . maybe-prefix)
   (apply icnu-gensym maybe-prefix))
 
