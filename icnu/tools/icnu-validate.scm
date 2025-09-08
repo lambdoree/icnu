@@ -27,8 +27,8 @@
   (let ((errs '()))
     (cond
      ((not (and (pair? port) (pair? peer)))
-      (set! errs (cons `(bad-link-format ,port ,peer) errs)))
-
+      (set! errs (cons `(bad-link-format ,port ,peer) errs))
+      (reverse errs))
      (else
       (unless (valid-port? (cdr port))
         (set! errs (cons `(invalid-port ,port) errs)))
@@ -52,8 +52,8 @@
 
       (let ((recip (hash-ref links peer #f)))
         (unless (equal? recip port)
-          (set! errs (cons `(non-reciprocal-link ,port ,peer ,recip) errs))))))
-    (reverse errs)))
+          (set! errs (cons `(non-reciprocal-link ,port ,peer ,recip) errs))))
+      (reverse errs)))))
 
 (define (vi:check-links net)
   (let* ((links (net-links net))
@@ -64,8 +64,6 @@
      links)
     errs))
 
-(define (hash-table? tbl)
-  (and (vector? tbl) (= (vector-length tbl) 1)))
 
 (define (validate-ir net)
   (let* ((nodes (net-nodes net))

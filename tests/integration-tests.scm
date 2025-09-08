@@ -34,14 +34,23 @@
     #t))
 
 (define (test-resolve-literal-cycle_detection)
-  "A longer cycle: ensure resolve-literal-ep does not loop indefinitely and returns *unresolved*."
-  (let* ((sexpr (mk-par
-                 (mk-node 'c1 'C) (mk-node 'c2 'C) (mk-node 'out 'A)
-                 (mk-wire 'c1 'l 'c2 'p)
-                 (mk-wire 'c2 'l 'c1 'p)
-                 (mk-wire 'out 'p 'c1 'r))))
-    (let ((net (parse-net sexpr)))
-      (assert-eq (resolve-literal-ep net (endpoint 'out 'p)) *unresolved* "cycle resolves to *unresolved*")))
+  (let* ((net1 (parse-net '(par (node c1 C) (node c2 C) 
+                               (wire (c1 l) (c2 p)) 
+                               (wire (c2 l) (c1 p))))))
+    (assert-eq (resolve-literal-ep net1 (endpoint 'c1 'p)) *unresolved* 
+               "2-node cycle should return *unresolved*"))
+  (let* ((net2 (parse-net '(par (node c1 C) (node c2 C) (node out A)
+                               (wire (c1 l) (c2 p))
+                               (wire (c2 l) (c1 p))
+                               (wire (out p) (c1 r))))))
+    (assert-eq (resolve-literal-ep net2 (endpoint 'out 'p)) *unresolved* 
+               "cycle with output should return *unresolved*"))
+  (let* ((net3 (parse-net '(par (node c1 C) (node c2 C) (node c3 C)
+                               (wire (c1 l) (c2 p))
+                               (wire (c2 l) (c3 p))
+                               (wire (c3 l) (c1 p))))))
+    (assert-eq (resolve-literal-ep net3 (endpoint 'c1 'p)) *unresolved* 
+               "3-node cycle should return *unresolved*"))
   #t)
 
 (define (test-reduce-unlimited-equivalence)

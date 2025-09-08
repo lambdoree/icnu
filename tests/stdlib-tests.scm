@@ -170,6 +170,21 @@
 		 (cnt (count-nodes-with-prefix net "church-app-")))
 	(assert-true (>= cnt n) (format-string #f "church-apply created ~a app nodes (expected >= ~a)" cnt n))
 	#t))
+(define (test-church-numeral-properties)
+  (let* ((net0 (parse-net (IC_CHURCH-APPLY 0 'f 'x 'out0)))
+         (reduced0 (reduce-net-to-normal-form net0 '((max-iter . 100)))))
+    (let ((peer-ep (peer reduced0 (endpoint 'out0 'p))))
+      (assert-eq (car peer-ep) 'x "Church 0 should be identity")))
+  (let* ((net1 (parse-net (IC_CHURCH-APPLY 1 'f 'x 'out1)))
+         (reduced1 (reduce-net-to-normal-form net1 '((max-iter . 100)))))
+    (assert-true (> (count-nodes-with-prefix reduced1 "church-app-") 0 
+                   "Church 1 should create application structure")))
+  (let* ((n 3)
+         (net (parse-net (IC_CHURCH-APPLY n 'f 'x 'outc)))
+         (cnt (count-nodes-with-prefix net "church-app-")))
+    (assert-true (>= cnt n) 
+                 (format-string #f "Church numeral ~a should have at least ~a app nodes" n n)))
+  #t)
 
 
 (run-tests "StdLib"

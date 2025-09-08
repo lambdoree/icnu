@@ -4,6 +4,7 @@
              (icnu eval)
              (icnu rewrite)
              (icnu utils log)
+             (icnu stdlib icnu-lib)
              (tests test-runner))
 
 (set-debug-level! 0)
@@ -92,13 +93,13 @@
           ((and has-out-default has-out-rev)
            (let ((v1 (eval-net (copy-net r-default) '((out-name . out))))
                  (v2 (eval-net (copy-net r-rev) '((out-name . out)))))
-             (assert-eq v1 v2 "both reductions produce out; values must match")))
+             (assert-eq v1 v2 "Confluence: both reductions must produce identical observable values")))
           ((and (not has-out-default) (not has-out-rev))
            (let ((c1 (length (all-nodes-with-agent r-default 'A)))
                  (c2 (length (all-nodes-with-agent r-rev 'A))))
-             (assert-eq c1 c2 "both reductions have no out; number of A nodes must match")))
+             (assert-eq c1 c2 "Confluence: networks without output must have equal size under observation")))
           (else
-           (assert-eq has-out-default has-out-rev "기본 패스 순서와 뒤집힌 순서가 관찰자 결과에서 동치여야 함")))))
+           (error "Confluence violation: reduction paths produced different observation capabilities")))))
      nets)
     #t))
 
@@ -160,8 +161,39 @@
 			   nets))
             (loop (+ i 1)))))))
 
+(define (net->canonical-form net)
+  (format-string #f "~a" (pretty-print net '((show-nu? . #t)))))
+
+(define (test-confluence-church-rosser-property)
+  "Church-Rosser property 검증: reduction이 confluence함을 보장"
+  (let* ((nets (list (make-const-fold-net) 
+                    (make-if-fold-boolean-net) 
+                    (make-composite-net)
+                    (parse-net (IC_CHURCH-APPLY 3 'f 'x 'outc))))
+        (max-steps 1000))
+    (for-each
+     (lambda (net)
+       (let* ((passes1 (shuffle default-passes))
+              (passes2 (shuffle default-passes))
+              (r1 (reduce-with-passes (copy-net net) passes1))
+              (r2 (reduce-with-passes (copy-net net) passes2))
+              ;; Normal form까지 reduction
+              (nf1 (reduce-with-passes r1 default-passes))
+              (nf2 (reduce-with-passes r2 default-passes)))
+         ;; Church-Rosser property: 모든 reduction path는 같은 normal form으로 수렴
+         (let ((obs1 (if (hash-ref (net-nodes nf1) 'out #f)
+                        (eval-net (copy-net nf1) '((out-name . out)))
+                        (net->canonical-form nf1)))
+               (obs2 (if (hash-ref (net-nodes nf2) 'out #f)
+                        (eval-net (copy-net nf2) '((out-name . out)))
+                        (net->canonical-form nf2))))
+           (assert-eq obs1 obs2 "Church-Rosser property: 모든 reduction path는 같은 normal form으로 수렴"))))
+     nets)
+    #t))
+
 (run-tests "Confluence"
 		   (list
             test-confluence-default-vs-reversed
             test-confluence-swap-two
-            test-confluence-randomized-samples))
+            test-confluence-randomized-samples
+            test-confluence-church-rosser-property))
