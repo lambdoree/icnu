@@ -3,9 +3,10 @@
   #:use-module (icnu utils log)
   #:use-module (ice-9 match)
   #:use-module (icnu utils internal)
+  #:use-module ((icnu literals) #:prefix lit:)
   #:export (
             ;; S-expression constructors
-            mk-node mk-wire mk-par mk-nu mk-node-labeled
+            mk-node-labeled
             
             ;; Net lifecycle and inspection
             parse-net pretty-print empty-net copy-net
@@ -40,7 +41,6 @@
 ;;; --------------------------------------------------------------------
 ;;; Nu-specific helpers
 ;;; --------------------------------------------------------------------
-(define (mk-nu names body) `(nu ,names ,body))
 
 (define (node-nu? net name)
   (let ((v (ic:ic-meta-get net name 'nu?)))
@@ -121,8 +121,7 @@
 
 (define (parse-1/nu n form use-nu?)
   (match form
-    ((or ('node name-form agent-form . rest)
-         ('mk-node name-form agent-form . rest))
+    (('node name-form agent-form . rest)
      (let ((name (unquote-if-needed name-form))
            (agent (unquote-if-needed agent-form)))
        (when (and (symbol? name) (symbol? agent))
@@ -134,17 +133,14 @@
                (let ((meta (unquote-if-needed (cadr rest))))
                  (set-node-meta! n name meta)))))))
      n)
-    ((or ('wire . args)
-         ('mk-wire . args))
+    (('wire . args)
      (call-with-values (lambda () (parse-wire-args n args))
        (lambda (e1 e2)
          (link-peers! n e1 e2)
          n)))
-    ((or ('par . es)
-         ('mk-par . es))
+    (('par . es)
      (icnu-fold (lambda (form acc) (parse-1/nu acc form use-nu?)) n es))
-    ((or ('nu names-form body)
-         ('mk-nu names-form body))
+    (('nu names-form body)
      (if use-nu?
          (let ((names (unquote-if-needed names-form)))
            (unless (list? names) (error "parse: nu names must be a list" names-form))
@@ -191,13 +187,19 @@
 ;;; --------------------------------------------------------------------
 ;;; Wrappers for pure IC functions from (icnu ic)
 ;;; --------------------------------------------------------------------
-(define mk-node ic:mk-node)
-(define mk-wire ic:mk-wire)
-(define mk-par ic:mk-par)
-(define mk-node-labeled ic:mk-node-labeled)
+(define (mk-node-labeled name agent . rest)
+  (let ((tag #f)
+        (desc #f))
+    (when (and (pair? rest) (not (null? rest)))
+      (set! tag (car rest))
+      (when (and (pair? (cdr rest)) (not (null? (cdr rest))))
+        (set! desc (cadr rest))))
+    `(node ,name ,agent ,@(cond ((and tag desc) (list tag desc))
+                                ((and tag (not (eq? tag #f))) (list tag))
+                                (desc (list 'user/opaque desc))
+                                (else '())))))
 (define empty-net ic:empty-net)
 (define copy-net ic:copy-net)
-(define make-fresh-name ic:make-fresh-name)
 (define all-names ic:all-names)
 (define node-agent ic:node-agent)
 (define endpoint ic:endpoint)
@@ -225,11 +227,28 @@
 (define node-meta ic:node-meta)
 (define ic-meta-get ic:ic-meta-get)
 (define ic-meta-set! ic:ic-meta-set!)
-(define ic-literal? ic:ic-literal?)
-(define ic-literal-value ic:ic-literal-value)
-(define ic-make-literal-node! ic:ic-make-literal-node!)
+
+;; Literal helpers are provided by (icnu literals) and are imported with prefix 'lit:'.
+;; We expose canonical icnu-facing wrappers so callers use `ic-literal?` etc via (icnu icnu),
+;; while the implementation lives in (icnu literals) under the 'lit:' prefix.
+(define (ic-literal? net name)
+  (lit:ic-literal? net name))
+
+(define (ic-literal-value net name)
+  (lit:ic-literal-value net name))
+
+(define (ic-make-literal-node! net name lit-tag lit-val)
+  (lit:ic-make-literal-node! net name lit-tag lit-val))
+
 (define <net> ic:<net>)
 (define net? ic:net?)
 (define plist-put ic:plist-put)
 (define plist-remove ic:plist-remove)
 (define pp-bool ic:pp-bool)
+
+(define (make-fresh-name n prefix)
+  (let* ((c (ic:net-counter n))
+         (name (string->symbol (string-append prefix "-" (number->string c)))))
+    (ic:set-net-counter! n (+ c 1))
+    name))
+

@@ -8,10 +8,10 @@
   #:use-module (icnu utils log)
   #:use-module (icnu tools icnu-mermaid)
   #:export (small-step-string big-step-string
-            small-step-net big-step-net
-            small-step-sequence-string small-step-sequence-net
-            run-steps-on-string
-            run-steps-on-string->mermaid))
+                              small-step-net big-step-net
+                              small-step-sequence-string small-step-sequence-net
+                              run-steps-on-string
+                              run-steps-on-string->mermaid))
 
 
 (define (ensure-global-lit-node net tag val prefix)
@@ -92,17 +92,17 @@
         (hash-for-each
          (lambda (name agent)
            (cond
-             ((eq? agent 'A) (set! cntA (+ cntA 1)) (set! a-names (cons name a-names)))
-             ((eq? agent 'C) (set! cntC (+ cntC 1)))
-             ((eq? agent 'E) (set! cntE (+ cntE 1)))
-             ((eq? agent 'V) (set! cntV (+ cntV 1))))
+            ((eq? agent 'A) (set! cntA (+ cntA 1)) (set! a-names (cons name a-names)))
+            ((eq? agent 'C) (set! cntC (+ cntC 1)))
+            ((eq? agent 'E) (set! cntE (+ cntE 1)))
+            ((eq? agent 'V) (set! cntV (+ cntV 1))))
            (when (is-literal-node? net name)
              (set! lits (cons (format-string #f "~a" (get-literal-value net name)) lits))))
          (net-nodes net))
         (let* ((a-short (let ((lst (reverse a-names)))
                           (let ((take (lambda (n l) (if (<= (length l) n) l (let loop ((i 0) (xs l) (acc '()))
-                                                             (if (or (null? xs) (>= i n)) (reverse acc)
-                                                                 (loop (+ i 1) (cdr xs) (cons (car xs) acc))))))))
+                                                                         (if (or (null? xs) (>= i n)) (reverse acc)
+                                                                             (loop (+ i 1) (cdr xs) (cons (car xs) acc))))))))
                             (map symbol->string (take 6 lst)))))
                (a-short-str (if (null? a-short) "" (join-strings a-short)))
                (lits-str (join-strings (reverse lits))))
@@ -122,13 +122,13 @@
                     (if (or (equal? cur-str next-str) (and prev-str (equal? prev-str cur-str)))
                         #t
                         (loop (+ i 1) next cur-str)))))))))
-    #t)
+  #t)
 
 (define (run-steps-on-string->mermaid s . maybe-args)
   (let* ((max (if (and (pair? maybe-args) (number? (car maybe-args)))
                   (car maybe-args) 100))
          (out-dir (if (and (pair? maybe-args) (pair? (cdr maybe-args)))
-                     (cadr maybe-args) "mermaid-output"))
+                      (cadr maybe-args) "mermaid-output"))
          (sexpr (read-sexpr-from-string s))
          (start-net (parse-net sexpr))
          (seq (small-step-sequence-net start-net max)))
@@ -146,3 +146,4 @@
           (write-mermaid-file (car nets) fname))
         (loop (cdr nets) (+ i 1))))
     #t))
+

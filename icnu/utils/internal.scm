@@ -1,7 +1,7 @@
 (define-module (icnu utils internal)
   #:use-module (icnu utils compat)
   #:export (icnu-match icnu-fold
-                       icnu-normalize-ep icnu-ensure-number icnu-gensyms icnu-any icnu-filter icnu-map icnu-string-prefix? icnu-string-suffix?
+                       icnu-normalize-ep icnu-ensure-number icnu-any icnu-filter icnu-map icnu-string-prefix? icnu-string-suffix?
                        icnu-andmap))
 
 (define (icnu-normalize-ep maybe-ep default-port)
@@ -12,14 +12,6 @@
 (define (icnu-ensure-number n who)
   (if (not (number? n))
       (error (string-append who ": first argument must be a number") n)))
-
-(define (icnu-gensyms prefix n)
-  ;; Use the compat-provided icnu-gensym directly to avoid introducing a
-  ;; local binding named `gensym` that would shadow the Scheme core binding.
-  (let loop ((k n) (acc '()))
-    (if (= k 0)
-        (reverse acc)
-        (loop (- k 1) (cons (apply icnu-gensym (list prefix)) acc)))))
 
 (define (icnu-any pred lst)
   (cond ((null? lst) #f)
@@ -89,3 +81,4 @@
              (if ok
                  (loop (map cdr ls))
                  #f)))))))
+

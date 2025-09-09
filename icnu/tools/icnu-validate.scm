@@ -70,3 +70,4 @@
          (errs1 (vi:check-agents nodes))
          (errs2 (vi:check-links net)))
     (append errs1 errs2)))
+

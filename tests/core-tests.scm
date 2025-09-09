@@ -9,11 +9,11 @@
 
 (set-debug-level! 0)
 
-(define (test-mk-helpers)
-  (assert-eq (mk-node 'x 'A) '(node x A) "mk-node produces node sexpr")
-  (assert-eq (mk-wire 'a 'p 'b 'r) '(wire (a p) (b r)) "mk-wire produces wire sexpr")
-  (assert-eq (mk-par '(node a A) '(node b A)) '(par (node a A) (node b A)) "mk-par")
-  (assert-eq (mk-nu '(a b) '(par)) '(nu (a b) (par)) "mk-nu")
+(define (test-sexpr-forms)
+  (assert-eq `(node x A) '(node x A) "node sexpr")
+  (assert-eq `(wire (a p) (b r)) '(wire (a p) (b r)) "wire sexpr")
+  (assert-eq `(par (node a A) (node b A)) '(par (node a A) (node b A)) "par sexpr")
+  (assert-eq `(nu (a b) (par)) '(nu (a b) (par)) "nu sexpr")
   #t)
 
 (define (test-empty-and-add-node)
@@ -335,7 +335,7 @@
 
 (run-tests "Core"
            (list
-            test-mk-helpers
+            test-sexpr-forms
             test-empty-and-add-node
             test-endpoint_and_linking_and_peers
             test-rewire_and_delete

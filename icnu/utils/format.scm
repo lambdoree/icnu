@@ -34,3 +34,4 @@
       (begin (display str destination) (force-output) str))
      (else
       (begin (display str) (force-output) str)))))
+

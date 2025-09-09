@@ -6,9 +6,8 @@
   #:use-module (icnu utils log)
   #:use-module (icnu utils compat)
   #:use-module (ice-9 match)
-  #:export (mk-node mk-wire mk-par mk-node-labeled
-					          ic-parse-net ic-pretty-print
-					          empty-net copy-net make-fresh-name all-names node-agent endpoint valid-port?
+  #:export (ic-parse-net ic-pretty-print
+					          empty-net copy-net all-names node-agent endpoint valid-port?
 					          peer net-nodes net-links net-tags net-meta get-ports unlink-port!
 					          rewire! ic-delete-node! all-nodes-with-agent find-active-pairs
 					          set-link-conflict-mode!
@@ -16,9 +15,10 @@
 					          mark-temporary! unmark-temporary! temporary-endpoint?
 					          link-peers!
 					          add-node! set-node-tag! node-tag set-node-meta! node-meta
-					          ic-meta-get ic-meta-set! ic-literal? ic-literal-value ic-make-literal-node!
+					          ic-meta-get ic-meta-set!
 					          <net>
 					          net?
+                    net-counter set-net-counter!
                     plist-put plist-remove
 					          pp-bool
 					          ))
@@ -260,76 +260,15 @@
 
 ;; General meta access helpers (core-provided, safe abstraction over node-meta)
 (define (ic-meta-get net name key)
-  "Return the value associated to KEY in the node META for NAME, or #f."
   (let ((meta (node-meta net name)))
     (if (and (list? meta) (assq key meta))
         (cdr (assq key meta))
         #f)))
 
 (define (ic-meta-set! net name key val)
-  "Set KEY=VAL in the node META for NAME. Returns NET."
   (let ((meta (node-meta net name)))
     (set-node-meta! net name (plist-put meta key val))
     net))
-
-(define (ic-literal? net name)
-  "Return #t if NAME has a literal tag."
-  (let ((tag (node-tag net name)))
-    (memq tag '(lit/bool lit/num lit/str)))
-
-  )
-
-(define (ic-literal-value net name)
-  (if (ic-literal? net name)
-      (let ((meta (node-meta net name)))
-        (if (eq? meta #f)
-            name
-            (let* ((v-pair (and (pair? meta) (list? meta) (assq 'value meta)))
-                   (val (cond
-                          (v-pair (cdr v-pair))
-                          ((and (pair? meta) (eq? (car meta) 'value)) (cdr meta))
-                          ((list? meta)
-                           (let ((vp (assq 'value meta)))
-                             (if vp (cdr vp) meta)))
-                          (else meta))))
-              (cond
-               ((and (pair? val) (eq? (car val) 'quote)) (cadr val))
-               ((list? val) name)
-               (else val)))))
-      name))
-
-(define (ic-make-literal-node! net name lit-tag lit-val)
-  (add-node! net name 'A)
-  (set-node-tag! net name lit-tag)
-  (set-node-meta! net name lit-val)
-  net)
-
-(define (make-fresh-name n . maybe-prefix)
-  (let ((prefix (if (null? maybe-prefix) "n" (car maybe-prefix))))
-    (letrec ((loop (lambda ()
-                     (let* ((i (net-counter n))
-                            (cand (string->symbol (format-string #f "~a-~a" prefix i))))
-					             (if (hash-ref (net-nodes n) cand #f)
-                           (begin (set-net-counter! n (+ i 1)) (loop))
-                           (begin (set-net-counter! n (+ i 1)) cand))))))
-      (loop))))
-
-(define (mk-node name agent . args)
-  `(node ,name ,agent ,@args))
-(define (mk-wire a p b q) `(wire (,a ,p) (,b ,q)))
-(define (mk-par . elts) `(par ,@elts))
-
-(define (mk-node-labeled name agent . rest)
-  (let ((tag #f)
-        (desc #f))
-    (when (and (pair? rest) (not (null? rest)))
-      (set! tag (car rest))
-      (when (and (pair? (cdr rest)) (not (null? (cdr rest))))
-        (set! desc (cadr rest))))
-    `(node ,name ,agent ,@(cond ((and tag desc) (list tag desc))
-                                ((and tag (not (eq? tag #f))) (list tag))
-                                (desc (list 'user/opaque desc))
-                                (else '())))))
 
 (define (unquote-if-needed x)
   (if (and (pair? x) (eq? (car x) 'quote) (not (null? (cdr x))))
@@ -390,8 +329,7 @@
 
 (define (parse-1 n form)
   (match form
-    ((or ('node name-form agent-form . rest)
-         ('mk-node name-form agent-form . rest))
+    (('node name-form agent-form . rest)
      (let ((name (unquote-if-needed name-form))
            (agent (unquote-if-needed agent-form)))
        (when (and (symbol? name) (symbol? agent))
@@ -403,14 +341,12 @@
                (let ((meta (unquote-if-needed (cadr rest))))
                  (set-node-meta! n name meta)))))))
      n)
-    ((or ('wire . args)
-         ('mk-wire . args))
+    (('wire . args)
      (call-with-values (lambda () (parse-wire-args n args))
        (lambda (e1 e2)
          (link-peers! n e1 e2)
          n)))
-    ((or ('par . es)
-         ('mk-par . es))
+    (('par . es)
      (icnu-fold (lambda (form acc) (parse-1 acc form)) n es))
     (else (error "parse-1: Unrecognized form. Expected (node ...), (wire ...), or (par ...)." form))))
 
@@ -470,3 +406,4 @@
 
 (define (ic-parse-net sexpr)
   (parse-1 (empty-net) sexpr))
+

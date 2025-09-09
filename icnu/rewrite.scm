@@ -6,6 +6,7 @@
   #:use-module (icnu utils format)
   #:use-module (icnu utils log)
   #:use-module (icnu icnu)
+  #:use-module ((icnu literals) #:prefix lit:)
   #:export (rewrite-pass-AC!
 			rewrite-pass-AE!
 			rewrite-pass-if-fold!
@@ -97,10 +98,10 @@
 	  #f))
 
 (define (is-literal-node? net node-name)
-  (ic-literal? net node-name))
+  (lit:ic-literal? net node-name))
 
 (define (get-literal-value net node-name)
-  (ic-literal-value net node-name))
+  (lit:ic-literal-value net node-name))
 
 (define (ep-key ep)
   (if (and (pair? ep) (symbol? (car ep)) (symbol? (cdr ep)))
@@ -380,3 +381,4 @@
 		 (_ #f)))
 	 pairs)
 	changed?))
+

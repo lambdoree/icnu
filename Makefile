@@ -22,14 +22,9 @@ install: build
 # Runs all test suites.
 test:
 	@echo "Running tests..."
-	@if [ -f tests/ic-lib-tests.scm ]; then \
-		guile -L . tests/ic-lib-tests.scm || exit 1; \
-	fi
 	@for f in tests/*-tests.scm; do \
-		if [ "$$f" != "tests/ic-lib-tests.scm" ]; then \
-			echo "--- Running $$f ---"; \
-			guile -L . $$f || exit 1; \
-		fi \
+		echo "--- Running $$f ---"; \
+		guile -L . $$f || exit 1; \
 	done
 
 # Removes the installed files.
