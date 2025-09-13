@@ -17,7 +17,9 @@
 
 (define (debugf level fmt . args)
   (when (>= (debug-level?) level)
-    (apply format-string (current-output-port) fmt args)
+    ;; Use apply with an explicit arg-list so format-string receives the
+    ;; destination port followed by the format string and its arguments.
+    (apply format-string (cons (current-output-port) (cons fmt args)))
     (force-output (current-output-port))))
 
 (define (warnf fmt . args)
@@ -31,7 +33,7 @@
       (let ((cnt (icnu-hash-ref *debug-counts* kstr 0)))
         (when (< cnt limit)
           (icnu-hash-set! *debug-counts* kstr (+ cnt 1))
-          (apply format-string (current-output-port) fmt args)
+          (apply format-string (cons (current-output-port) (cons fmt args)))
           (force-output (current-output-port)))))))
 
 (define (debug-once key level fmt . args)
