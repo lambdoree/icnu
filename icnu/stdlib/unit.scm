@@ -15,6 +15,18 @@
 ;; 반환값: (par ...) S-식
 (define (IC_UNIT name in-names out-names ret-name body)
   (let* ((body-forms (if (and (pair? body) (eq? (car body) 'par)) (cdr body) (if body (list body) '())))
+
+         ;; --- Auto-generate frame unpacking ---
+         (frame-node (string->symbol (format-string #f "~a-frame" name)))
+         (in-pack-node 'in-pack)   ;; Use a stable, conventional name
+         (out-pack-node 'out-pack) ;; Use a stable, conventional name
+         (unpack-forms
+           `(;; IC_PURE_FST/SND will each declare their output node (in-pack/out-pack)
+             ,@(IC_PURE_FST (list frame-node 'l) in-pack-node)
+             ,@(IC_PURE_SND (list frame-node 'l) out-pack-node)))
+         (all-body-forms (append unpack-forms body-forms))
+
+         ;; --- Collect internal nodes for nu-scoping ---
          (collect
            (lambda (forms)
              (letrec ((walk
@@ -28,8 +40,10 @@
                               (walk (cdr f) acc2)))
                            (else acc)))))
                (walk forms '()))))
-         (decls (collect body-forms))
-         (raw (cons ret-name decls))
+         (body-decls (collect body-forms))
+         ;; The frame node is external (created by caller). in-pack/out-pack are internal.
+         (auto-decls (list in-pack-node out-pack-node))
+         (raw (append (list ret-name) body-decls auto-decls))
          (uniq
            (lambda (lst)
              (let loop ((l lst) (acc '()))
@@ -45,15 +59,15 @@
             `(node ,name C)
             `(nu (,@internal)
                  (par
-                   ,@body-forms
+                   ,@all-body-forms
                    (node ,ret-name C)))
             `(wire (,ret-name l) (,name p))))) 
     forms))
 
 (define (IC_CALL_UNIT unit-name in-pack out-pack result)
   (let ((frame (string->symbol (format-string #f "~a-frame" unit-name))))
-    (let* ((in-ep  (if (symbol? in-pack)  `(,in-pack r)  in-pack))
-           (out-ep (if (symbol? out-pack) `(,out-pack r) out-pack)))
+    (let* ((in-ep  (if (symbol? in-pack)  `(,in-pack p)  in-pack))
+           (out-ep (if (symbol? out-pack) `(,out-pack p) out-pack)))
       (append
        (list `(wire (,unit-name l) (,result p)))
        (IC_PURE_PAIR in-ep out-ep frame)

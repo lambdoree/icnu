@@ -11,12 +11,8 @@
 
 (define add-one-body
   `(par
-    (node in1 C)
-    ,@(IC_PURE_FST 'add-one-frame 'in1)
-
     ,@(IC_LITERAL 1 'one)
-
-    ,@(IC_PRIM_ADD '(in1 l) '(one p) 'ret)
+    ,@(IC_PRIM_ADD '(in-pack l) '(one p) 'ret)
     ))
 
 (define add-one-unit-sexpr
