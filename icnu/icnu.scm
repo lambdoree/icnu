@@ -38,10 +38,6 @@
             plist-put plist-remove pp-bool
             ))
 
-;;; --------------------------------------------------------------------
-;;; Nu-specific helpers
-;;; --------------------------------------------------------------------
-
 (define (node-nu? net name)
   (let ((v (ic:ic-meta-get net name 'nu?)))
     (and v (not (eq? v #f)))))
@@ -60,9 +56,6 @@
     (debugf 2 "inherit-nu!: ~a inherits nu from ~a\n" new-node parent-nodes)
     (mark-nu! net new-node)))
 
-;;; --------------------------------------------------------------------
-;;; Core functions extended with nu-awareness
-;;; --------------------------------------------------------------------
 (define (unquote-if-needed x)
   (if (and (pair? x) (eq? (car x) 'quote) (not (null? (cdr x))))
       (cadr x)
@@ -76,17 +69,20 @@
   (let* ((pair (match ep
                  (('quote p) p)
                  (('list . p) p)
-                 (_ ep)))
-         (a-form (and (pair? pair) (car pair)))
-         (p-form (and (pair? pair) (pair? (cdr pair)) (cadr pair))))
-    (if (and a-form p-form)
-        (let ((a (unquote-if-needed a-form))
-              (p (unquote-if-needed p-form)))
-          (unless (and (symbol? a) (valid-port? p))
-            (error "parse: bad endpoint form" ep))
-          (ensure-free-name-node! n a)
-          (endpoint a p))
-        (error "parse-endpoint: Malformed endpoint." ep))))
+                 (_ ep))))
+    (if (not (pair? pair))
+        (error "parse-endpoint: Malformed endpoint. Not a pair." ep)
+        (let* ((a-form (car pair))
+               (p-rest (cdr pair))
+               (p-form (if (list? p-rest) (car p-rest) p-rest)))
+          (if (and a-form p-form)
+              (let ((a (unquote-if-needed a-form))
+                    (p (unquote-if-needed p-form)))
+                (unless (and (symbol? a) (valid-port? p))
+                  (error "parse: bad endpoint form" ep))
+                (ensure-free-name-node! n a)
+                (endpoint a p))
+              (error "parse-endpoint: Malformed endpoint. Expected ('name 'port) or ('name . 'port)." ep))))))
 
 (define (parse-wire-args n args)
   (let ((len (length args)))
@@ -154,9 +150,17 @@
 
 (define (parse-net sexpr . maybe-use-nu)
   (let ((use-nu? (if (null? maybe-use-nu) #t (car maybe-use-nu))))
-    (if use-nu?
-        (parse-net/nu sexpr #t)
-        (ic:ic-parse-net sexpr))))
+    ;; Accept either a single top-level form like (par ...) or a bare list
+    ;; of forms (e.g. (node ...) (node ...) ...) produced by some helpers.
+    ;; If the provided sexpr looks like a bare sequence of forms (its car is
+    ;; itself a list), wrap it in a top-level (par ...) so the existing
+    ;; parser can consume it uniformly.
+    (let ((wrapped-sexpr (if (and (pair? sexpr) (not (symbol? (car sexpr))))
+                              `(par ,@sexpr)
+                              sexpr)))
+      (if use-nu?
+          (parse-net/nu wrapped-sexpr #t)
+          (ic:ic-parse-net wrapped-sexpr)))))
 
 (define (pretty-print net . maybe-opts)
   (let* ((body (apply ic:ic-pretty-print net maybe-opts))
@@ -184,9 +188,6 @@
         n)
       (ic:ic-delete-node! n x)))
 
-;;; --------------------------------------------------------------------
-;;; Wrappers for pure IC functions from (icnu ic)
-;;; --------------------------------------------------------------------
 (define (mk-node-labeled name agent . rest)
   (let ((tag #f)
         (desc #f))
@@ -228,9 +229,6 @@
 (define ic-meta-get ic:ic-meta-get)
 (define ic-meta-set! ic:ic-meta-set!)
 
-;; Literal helpers are provided by (icnu literals) and are imported with prefix 'lit:'.
-;; We expose canonical icnu-facing wrappers so callers use `ic-literal?` etc via (icnu icnu),
-;; while the implementation lives in (icnu literals) under the 'lit:' prefix.
 (define (ic-literal? net name)
   (lit:ic-literal? net name))
 

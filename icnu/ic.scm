@@ -35,12 +35,12 @@
 
 (define (empty-net)
   (make-net
-   (make-hash-table)          ; nodes
-   (make-hash-table)          ; links
-   0                          ; counter
-   (make-hash-table)          ; tags
-   (make-hash-table)          ; tmp-endpoints
-   (make-hash-table)))        ; meta
+   (make-hash-table)
+   (make-hash-table)
+   0
+   (make-hash-table)
+   (make-hash-table)
+   (make-hash-table)))
 
 (define (copy-net n)
   (let ((nn (make-hash-table))
@@ -138,9 +138,9 @@
                   (list 'b-port b-port 'peer pb))))
       ((replace-exact)
        (cond
-        ((and (equal? pa b-port) (equal? pb a-port)) n) ; R1: idempotent
-        ((and (equal? pa b-port) (not pb)) (hash-set! L b-port a-port)) ; R2: repair
-        ((and (equal? pb a-port) (not pa)) (hash-set! L a-port b-port)) ; R2: repair
+        ((and (equal? pa b-port) (equal? pb a-port)) n)
+        ((and (equal? pa b-port) (not pb)) (hash-set! L b-port a-port))
+        ((and (equal? pb a-port) (not pa)) (hash-set! L a-port b-port))
         ((and (not pa) (not pb))
          (error "replace-exact: cannot create new link" a-port b-port))
         (else
@@ -183,9 +183,8 @@
         (let ((found #f))
           (hash-for-each
            (lambda (k v)
-             (when (and (eq? (car k) (car a-port))
-                        (eq? (cdr k) (cdr a-port)))
-			         (set! found v)))
+             (when (equal? k a-port)
+               (set! found v)))
            (net-links n))
           found))))
 
@@ -258,7 +257,6 @@
       (icnu-filter (lambda (p) (not (eq? (car p) key))) plist)
       plist))
 
-;; General meta access helpers (core-provided, safe abstraction over node-meta)
 (define (ic-meta-get net name key)
   (let ((meta (node-meta net name)))
     (if (and (list? meta) (assq key meta))
@@ -283,17 +281,20 @@
   (let* ((pair (match ep
                  (('quote p) p)
                  (('list . p) p)
-                 (_ ep)))
-         (a-form (and (pair? pair) (car pair)))
-         (p-form (and (pair? pair) (pair? (cdr pair)) (cadr pair))))
-    (if (and a-form p-form)
-        (let ((a (unquote-if-needed a-form))
-              (p (unquote-if-needed p-form)))
-          (unless (and (symbol? a) (valid-port? p))
-            (error "parse: bad endpoint form" ep))
-          (ensure-free-name-node! n a)
-          (endpoint a p))
-        (error "parse-endpoint: Malformed endpoint. Expected a list like ('node-name 'port) or (list 'node-name 'port)." ep))))
+                 (_ ep))))
+    (if (not (pair? pair))
+        (error "parse-endpoint: Malformed endpoint. Not a pair." ep)
+        (let* ((a-form (car pair))
+               (p-rest (cdr pair))
+               (p-form (if (list? p-rest) (car p-rest) p-rest)))
+          (if (and a-form p-form)
+              (let ((a (unquote-if-needed a-form))
+                    (p (unquote-if-needed p-form)))
+                (unless (and (symbol? a) (valid-port? p))
+                  (error "parse: bad endpoint form" ep))
+                (ensure-free-name-node! n a)
+                (endpoint a p))
+              (error "parse-endpoint: Malformed endpoint. Expected ('name 'port) or ('name . 'port)." ep))))))
 
 (define (parse-wire-args n args)
   (let ((len (length args)))
@@ -307,13 +308,12 @@
           (error "parse-wire-args: Bad 4-argument wire form. Expected (wire 'a 'p 'b 'q)." args))
         (values (endpoint a p) (endpoint b q))))
      ((= len 3)
-      (if (list? (list-ref args 2)) ; (a p ep2) form
+      (if (list? (list-ref args 2))
           (let ((a (unquote-if-needed (list-ref args 0)))
                 (p (unquote-if-needed (list-ref args 1)))
                 (ep2 (list-ref args 2)))
             (unless (and (symbol? a) (symbol? p)) (error "parse-wire-args: Bad 3-argument wire form. Expected (wire 'a 'p ('b 'q))." args))
             (values (endpoint a p) (parse-endpoint n ep2)))
-                                        ; (ep1 b q) form
           (let ((ep1 (list-ref args 0))
                 (b (unquote-if-needed (list-ref args 1)))
                 (q (unquote-if-needed (list-ref args 2))))
@@ -401,7 +401,6 @@
 		     links)
         (reverse acc)))
     (let ((body `(par ,@nodes-out ,@links-out)))
-      ;; Nu printing logic will be in nu.scm or the bundle module
       body)))
 
 (define (ic-parse-net sexpr)

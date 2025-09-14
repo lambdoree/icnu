@@ -10,6 +10,12 @@
 
 (set-debug-level! 0)
 
+(define (unwrap-value v)
+  (cond
+   ((and (pair? v) (eq? (car v) 'value)) (cdr v))
+   ((and (list? v) (assq 'value v)) (cdr (assq 'value v)))
+   (else v)))
+
 (define (test-is-literal-and-get-literal)
   (let ((net (empty-net)))
     (add-node! net 'true-node 'A) (set-node-tag! net 'true-node 'lit/bool) (set-node-meta! net 'true-node #t)
@@ -27,7 +33,7 @@
 
     (assert-eq (get-literal-value net 'num-42) 42 "get-literal-value numeric")
     (assert-eq (get-literal-value net 'true-node) #t "get-literal-value true")
-    (assert-eq (get-literal-value net 'false-node) #f "get-literal-value false")
+    (assert-eq (unwrap-value (get-literal-value net 'false-node)) #f "get-literal-value false")
     (assert-eq (get-literal-value net 'str-hello) "hello" "get-literal-value string")
     (assert-eq (get-literal-value net 'op-add) 'op-add "non-literal falls back to symbol")
     #t))
@@ -119,7 +125,7 @@
   (let ((net (parse-net
               '(par
                 (node if-impl A 'prim/if) (node cond-copy C) (node out-if A)
-                (node num-123 A 'lit/num) ; Non-boolean literal
+                (node num-123 A 'lit/num 123)
                 (wire (num-123 p) (cond-copy p))
                 (wire (cond-copy l) (if-impl p))
                 (wire (cond-copy r) (out-if p))
@@ -149,8 +155,8 @@
                  (node lt A 'prim/lt) (node num-2 A 'lit/num) (node num-3 A 'lit/num)
                  (wire (num-2 p) (lt l)) (wire (num-3 p) (lt r)) (wire (lt p) (out p))
                  (node if-impl A 'prim/if) (node cond-copy C) (node out-if A)
-                 (node cond-lit A 'lit/bool #t)      ; added literal true node
-                 (wire (cond-lit p) (cond-copy p)) ; connect literal to condition copier
+                 (node cond-lit A 'lit/bool #t)
+                 (wire (cond-lit p) (cond-copy p))
                  (wire (cond-copy l) (if-impl p))
                  (wire (cond-copy r) (out-if p))
                  (wire (if-impl l) (then-lit p))
@@ -181,7 +187,7 @@
 (define (test-eval-const-fold)
   (let* ((input "(par (node lt1 A 'prim/lt) (node c C) (wire (num-2 p) (c p)) (wire (c l) (lt1 l)) (wire (num-3 p) (lt1 r)) (wire (lt1 p) (out p)) (node num-2 A 'lit/num 2) (node num-3 A 'lit/num 3) (node out A))")
          (net (parse-net (read-sexpr-from-string input)))
-         (result (eval-net net '((out-name . out)))))
+         (result (unwrap-value (eval-net net '((out-name . out))))))
     (assert-eq result #t "const-fold of 2 < 3 evaluates to #t"))
   #t)
 

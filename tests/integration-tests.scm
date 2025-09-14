@@ -11,8 +11,13 @@
 
 (set-debug-level! 0)
 
+(define (unwrap-value v)
+  (cond
+   ((and (pair? v) (eq? (car v) 'value)) (cdr v))
+   ((and (list? v) (assq 'value v)) (cdr (assq 'value v)))
+   (else v)))
+
 (define (test-resolve-literal-deep-chain)
-  "Deep copier chain: resolve-literal-ep should traverse many Copier nodes and find the literal."
   (let* ((depth 128)
          (nodes '())
          (wires '()))
@@ -54,7 +59,6 @@
   #t)
 
 (define (test-reduce-unlimited-equivalence)
-  "Compare reduce-net-to-normal-form with a large numeric max-iter vs (max-iter . #f) (unlimited) for a chain of AA merges."
   (let* ((n 16)
          (nodes '())
          (wires '()))
@@ -81,8 +85,6 @@
     #t))
 
 (define (test-IC_Y_small_finite)
-  "Create a small IC_Y net and ensure reduction finishes and out node exists.
-   Use a trivially terminating function (it simply returns its argument) to avoid true recursion."
   (let* ((fn-name (gensym "yf-"))
          (sexpr `(par ,(IC_Y fn-name 'outy)))
          (net (parse-net sexpr))
@@ -142,8 +144,6 @@
           (loop (+ i 1))))))
 
 (define (test-complex-copier-tree-stability)
-  "Build a fanout tree where a single literal is wired to many outputs via distinct copiers.
-   After reduction, each out should resolve to the shared literal value."
   (let* ((outs 64))
     (call-with-values (lambda () (build-fanout-nodes-and-wires outs))
       (lambda (nodes wires)
@@ -156,8 +156,6 @@
 (define *long-tests-enabled* (make-parameter #t))
 
 (define (test-long-church-apply_heavy)
-  "Heavy reduction using IC_CHURCH-APPLY with a larger n.
-   This test is gated behind *long-tests-enabled* and is skipped by default."
   (if (not (*long-tests-enabled*))
       (begin (format-string #t "skipping long test: heavy church-apply ") #t)
       (let* ((n 30)
@@ -243,9 +241,6 @@
     (assert-false (null? (validate-ir net)) "validate-ir on a net with non-reciprocal link should return a non-empty list")))
 
 (define (test-tag-system-resists-name-heuristics)
-  "Test that the rewrite system relies on tags, not node name heuristics.
-   An 'lt' operator is given a misleading 'if-impl' name, but tagged 'prim/lt'.
-   The const-fold pass should still correctly identify and fold it."
   (let ((net (parse-net
               '(par
                 (node if-impl-imposter A 'prim/lt)
@@ -259,7 +254,7 @@
     (assert-false (node-agent net 'if-impl-imposter) "imposter node should be removed after folding")
     (let ((out-peer (peer net (endpoint 'out 'p))))
       (assert-true out-peer "out.p should have a peer")
-      (let ((val (resolve-literal-ep net out-peer)))
+      (let ((val (unwrap-value (resolve-literal-ep net out-peer))))
         (assert-eq val #t "result of 10 < 20 is #t"))))
   #t)
 

@@ -165,7 +165,6 @@
   (format-string #f "~a" (pretty-print net '((show-nu? . #t)))))
 
 (define (test-confluence-church-rosser-property)
-  "Church-Rosser property 검증: reduction이 confluence함을 보장"
   (let* ((nets (list (make-const-fold-net) 
                     (make-if-fold-boolean-net) 
                     (make-composite-net)

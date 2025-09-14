@@ -9,7 +9,7 @@
 		              JOIN-REPLACE JOIN-MAX
 		              IC_LITERAL IC_EQ_CONST IC_LT_CONST IC_GT_CONST
 		              IC_AND IC_OR IC_NOT IC_COPY
-		              IC_PRIM_ADD IC_PRIM_ADD_RUNTIME IC_APPLY
+		              IC_PRIM_ADD IC_PRIM_SUB IC_PRIM_ADD_RUNTIME IC_APPLY
 		              IC_MK_TRUE IC_MK_FALSE
                   IC_CHURCH-APPLY IC_CONS IC_NIL IC_FIRST IC_REST IC_FOLD
 			            IC_PURE_ID IC_PURE_PAIR IC_PURE_FST IC_PURE_SND IC_PURE_LEFT IC_PURE_RIGHT
@@ -20,9 +20,7 @@
          (c-c (icnu-gensym "cond-copy-"))
          (t-c (icnu-gensym "then-copy-"))
          (e-c (icnu-gensym "else-copy-")))
-    `(par
-      (node ,out-node A user/output "IF result output")
-      (node ,if-impl A prim/if "Core IF agent")
+    `((node ,if-impl A prim/if)
       (node ,c-c C)
       ,(wire-or-list c-port c-c)
       (wire (,c-c l) (,if-impl p))
@@ -51,11 +49,13 @@
 (define (IC_LITERAL val out)
   (cond
    ((boolean? val)
-    `(par (node ,out A lit/bool ,val)))
+    `((node ,out A lit/bool ,val)))
    ((number? val)
-    `(par (node ,out A lit/num ,val)))
+    `((node ,out A lit/num ,val)))
    ((or (symbol? val) (string? val))
-    `(par (node ,out A lit/str ,(if (symbol? val) `',val val))))
+    `((node ,out A lit/str ,(if (symbol? val) `',val val))))
+   ((pair? val)
+    `((node ,out A lit/pair ',val)))
    (else
     (error "IC_LITERAL: unsupported literal type" val))))
 
@@ -64,7 +64,7 @@
          (c-f (icnu-gensym "app-f-"))
          (c-x (icnu-gensym "app-x-")))
     `(par
-      (node ,out-node A user/apply-out "APPLY output node")
+      (node ,out-node A user/apply-out)
       (node ,c-f C)
       (node ,c-x C)
       ,(wire-or-list f-port c-f)
@@ -75,13 +75,13 @@
 (define (IC_GENERIC_CONST_OP const-val in-port out-node tag)
   (let* ((lit (icnu-gensym "lit-"))
          (in-copy (icnu-gensym "in-copy-")))
-    `(par 
-      ,(IC_LITERAL const-val lit)
-      (node ,out-node A ,tag)
-      (node ,in-copy C)
-      ,(wire-or-list in-port in-copy)
-      (wire (,in-copy l) (,out-node l))
-      (wire (,lit p) (,out-node r)))))
+    (append
+     (IC_LITERAL const-val lit)
+     `((node ,out-node A ,tag)
+       (node ,in-copy C)
+       ,(wire-or-list in-port in-copy)
+       (wire (,in-copy l) (,out-node l))
+       (wire (,lit p) (,out-node r))))))
 
 (define (IC_EQ_CONST const-val in-port out-node)
   (IC_GENERIC_CONST_OP const-val in-port out-node 'prim/eq))
@@ -94,11 +94,10 @@
 
 (define (IC_COPY in out)
   (if (eq? in out)
-      `(par (node ,out A))
+      `((node ,out A))
       (let ((c-left (icnu-gensym "c-left-"))
             (c-right (icnu-gensym "c-right-")))
-        `(par
-          (node ,out A user/copier-out "COPY output node")
+        `((node ,out A user/copier-out)
           (node ,c-left C)
           (wire (,in l) (,c-left p))
           (wire (,c-left l) (,out l))
@@ -119,28 +118,77 @@
 (define (IC_NOT in-port out-node)
   (let ((true-node (icnu-gensym "true-"))
         (false-node (icnu-gensym "false-")))
-    `(par
-      (node ,out-node A)
-      ,(IC_LITERAL #t true-node)
-      ,(IC_LITERAL #f false-node)
-      ,(IC_IF in-port (list false-node 'r) (list true-node 'r) out-node))))
+    (append
+     `((node ,out-node A))
+     (IC_LITERAL #t true-node)
+     (IC_LITERAL #f false-node)
+     (IC_IF in-port (list false-node 'r) (list true-node 'r) out-node))))
 
 (define (IC_PRIM_ADD in1 in2 out)
   (let ((add-impl (icnu-gensym "add-"))
         (c1 (icnu-gensym "c-")) (c2 (icnu-gensym "c-"))
         (out-c (icnu-gensym "out-copy-")))
-    `(par
-      (node ,add-impl A prim/add "Core ADD agent")
+    `((node ,add-impl A prim/add)
       (node ,c1 C)
       (node ,c2 C)
-      ,(wire-or-list in1 c1)
-      ,(wire-or-list in2 c2)
+      ,(let ((a in1) (dst c1))
+         (cond
+          ((symbol? a)
+           `(wire (,a p) (,dst p)))
+          ((and (list? a) (= (length a) 2) (eq? (cadr a) 'l))
+           `(wire (,(car a) l) (,dst p)))
+          ((and (list? a) (= (length a) 2) (eq? (cadr a) 'p))
+           `(wire (,(car a) p) (,dst p)))
+          (else
+           `(wire ,a (,dst p)))))
+      ,(let ((b in2) (dst c2))
+         (cond
+          ((symbol? b)
+           `(wire (,b p) (,dst p)))
+          ((and (list? b) (= (length b) 2) (eq? (cadr b) 'l))
+           `(wire (,(car b) l) (,dst p)))
+          ((and (list? b) (= (length b) 2) (eq? (cadr b) 'p))
+           `(wire (,(car b) p) (,dst p)))
+          (else
+           `(wire ,b (,dst p)))))
       (wire (,c1 l) (,add-impl l))
       (wire (,c2 l) (,add-impl r))
-      (node ,out A)
       (node ,out-c C)
       (wire (,add-impl p) (,out-c p))
-      (wire (,out-c l) (,out r)))))
+      (wire (,out-c l) (,out p)))))
+
+(define (IC_PRIM_SUB in1 in2 out)
+  (let ((sub-impl (icnu-gensym "sub-"))
+        (c1 (icnu-gensym "c-")) (c2 (icnu-gensym "c-"))
+        (out-c (icnu-gensym "out-copy-")))
+    `((node ,sub-impl A prim/sub)
+      (node ,c1 C)
+      (node ,c2 C)
+      ,(let ((a in1) (dst c1))
+         (cond
+          ((symbol? a)
+           `(wire (,a p) (,dst p)))
+          ((and (list? a) (= (length a) 2) (eq? (cadr a) 'l))
+           `(wire (,(car a) l) (,dst p)))
+          ((and (list? a) (= (length a) 2) (eq? (cadr a) 'p))
+           `(wire (,(car a) p) (,dst p)))
+          (else
+           `(wire ,a (,dst p)))))
+      ,(let ((b in2) (dst c2))
+         (cond
+          ((symbol? b)
+           `(wire (,b p) (,dst p)))
+          ((and (list? b) (= (length b) 2) (eq? (cadr b) 'l))
+           `(wire (,(car b) l) (,dst p)))
+          ((and (list? b) (= (length b) 2) (eq? (cadr b) 'p))
+           `(wire (,(car b) p) (,dst p)))
+          (else
+           `(wire ,b (,dst p)))))
+      (wire (,c1 l) (,sub-impl l))
+      (wire (,c2 l) (,sub-impl r))
+      (node ,out-c C)
+      (wire (,sub-impl p) (,out-c p))
+      (wire (,out-c l) (,out p)))))
 
 (define (IC_MK_TRUE b)
   `(par (node ,b A lit/bool #t)))
@@ -155,11 +203,11 @@
          (app2     (icnu-gensym "Yapp2"))
          (res-node (icnu-gensym "Yres")))
     `(par
-      (node ,y-node A y-comb "Y combinator structure")
+      (node ,y-node A y-comb)
       (node ,dup-node C)
-      (node ,app1 A y-comb "Y combinator app1")
-      (node ,app2 A y-comb "Y combinator app2")
-      (node ,res-node A y-comb "Y combinator result output")
+      (node ,app1 A y-comb)
+      (node ,app2 A y-comb)
+      (node ,res-node A y-comb)
       ,(wire-or-list fn dup-node)
       (wire (,dup-node l) (,app1 p))
       (wire (,dup-node r) (,app2 p))
@@ -261,32 +309,42 @@
   (IC_PRIM_ADD in1 in2 out))
 
 (define (IC_CONS head tail name)
-  (let ((sym name))
-    `(par
-      (node ,sym A ds/cons "CONS cell")
-      ,(if (symbol? head)
-           `(wire (,head p) (,sym l))
-           `(wire ,head (,sym l)))
-      ,(if (symbol? tail)
-           `(wire (,tail p) (,sym r))
-           `(wire ,tail (,sym r))))))
+  (let* ((sym name)
+         (first-c (string->symbol (format-string #f "~a-first-c" sym)))
+         (rest-c (string->symbol (format-string #f "~a-rest-c" sym))))
+    `((node ,sym A ds/cons)
+      (node ,first-c C)
+      (node ,rest-c C)
+      ,(if (and (list? head) (eq? (car head) 'quote))
+           (let ((lit-name (icnu-gensym "cons-lit-")))
+             `(par ,@(IC_LITERAL (cadr head) lit-name)
+                  (wire (,lit-name p) (,first-c p))))
+           (if (symbol? head)
+               `(wire (,head p) (,first-c p))
+               `(wire ,head (,first-c p))))
+      ,(if (symbol? tail) `(wire (,tail p) (,rest-c p)) `(wire ,tail (,rest-c p)))
+      (wire (,first-c l) (,sym l))
+      (wire (,rest-c l) (,sym r)))))
 
 (define (IC_NIL name)
   (let ((sym (if (symbol? name) name (string->symbol (format-string #f "nil-~a" name))))
         (e1 (icnu-gensym "e_"))
         (e2 (icnu-gensym "e_")))
-    `(par
-      (node ,sym A ds/nil "NIL cell")
+    `((node ,sym A ds/nil)
       (node ,e1 E)
       (node ,e2 E)
       (wire (,sym l) (,e1 p))
       (wire (,sym r) (,e2 p)))))
 
 (define (IC_FIRST cons out)
-  `(par (node ,out A) (wire (,cons l) (,out p))))
+  (let ((first-c (string->symbol (format-string #f "~a-first-c" cons))))
+    `((node ,out A)
+      (wire (,first-c r) (,out l)))))
 
 (define (IC_REST cons out)
-  `(par (node ,out A) (wire (,cons r) (,out p))))
+  (let ((rest-c (string->symbol (format-string #f "~a-rest-c" cons))))
+    `((node ,out A)
+      (wire (,rest-c r) (,out l)))))
 
 (define (IC_FOLD list-port acc-port fn-port out)
   (let ((fold-n (icnu-gensym "fold-")))
@@ -298,37 +356,34 @@
 
 
 (define (IC_PURE_ID x-port out-node)
-  `(par
-    (node ,out-node A)
+  `((node ,out-node A)
     ,(wire-or-list x-port out-node)))
 
 (define (IC_PURE_PAIR a-port b-port pair-out-node)
-  `(par
-    (node ,pair-out-node A)
-    ,(wire-or-list a-port pair-out-node 'l)
-    ,(wire-or-list b-port pair-out-node 'r)))
+  (let* ((fst (string->symbol (format-string #f "~a-pair-fst-c" pair-out-node)))
+         (snd (string->symbol (format-string #f "~a-pair-snd-c" pair-out-node)))
+         (merge (string->symbol (format-string #f "~a-pair-merge-c" pair-out-node))))
+    `((node ,pair-out-node C)
+      (node ,fst C)
+      (node ,snd C)
+      (node ,merge C)
+      ,(wire-or-list a-port fst)
+      ,(wire-or-list b-port snd)
+      (wire (,fst r) (,merge l))
+      (wire (,snd r) (,merge r))
+      (wire (,merge p) (,pair-out-node p)))))
 
 (define (IC_PURE_FST pair-port out-node)
-  (let ((fst-agent (icnu-gensym "fst-agent-"))
-        (e (icnu-gensym "fst-eraser-")))
-    `(par
-       (node ,out-node A)
-       (node ,fst-agent A)
-       (node ,e E)
-       ,(wire-or-list pair-port fst-agent 'p)
-       (wire (,fst-agent l) (,out-node p))
-       (wire (,fst-agent r) (,e p)))))
+  (let* ((pair-node (car (icnu-normalize-ep pair-port 'p)))
+         (fst (string->symbol (format-string #f "~a-pair-fst-c" pair-node))))
+    `((node ,out-node C)
+      (wire (,fst l) (,out-node p)))))
 
 (define (IC_PURE_SND pair-port out-node)
-  (let ((snd-agent (icnu-gensym "snd-agent-"))
-        (e (icnu-gensym "snd-eraser-")))
-    `(par
-       (node ,out-node A)
-       (node ,snd-agent A)
-       (node ,e E)
-       ,(wire-or-list pair-port snd-agent 'p)
-       (wire (,snd-agent r) (,out-node p))
-       (wire (,snd-agent l) (,e p)))))
+  (let* ((pair-node (car (icnu-normalize-ep pair-port 'p)))
+         (snd (string->symbol (format-string #f "~a-pair-snd-c" pair-node))))
+    `((node ,out-node C)
+      (wire (,snd l) (,out-node p)))))
 
 (define (IC_PURE_LEFT a-port left-out-node)
   (let ((c-a (icnu-gensym "left-ca-"))

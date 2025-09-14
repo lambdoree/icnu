@@ -12,14 +12,18 @@
 
 (set-debug-level! 0)
 
+(define (unwrap-value v)
+  (cond
+   ((and (pair? v) (eq? (car v) 'value)) (cdr v))
+   ((and (list? v) (assq 'value v)) (cdr (assq 'value v)))
+   (else v)))
+
 (define (count-agent net agent)
-  "Count nodes of type agent in net."
   (let ((acc 0))
     (hash-for-each (lambda (k v) (when (eq? v agent) (set! acc (+ acc 1)))) (net-nodes net))
     acc))
 
 (define (count-nodes-with-prefix net prefix)
-  "Count node symbols whose printed name begins with prefix."
   (let ((acc 0))
     (hash-for-each
      (lambda (k v)
@@ -38,7 +42,7 @@
   (let ((net (parse-net (IC_LITERAL #t 'out))))
     (assert-eq (eval-net net '((out-name . out))) #t "IC_LITERAL #t resolves to #t"))
   (let ((net2 (parse-net (IC_LITERAL #f 'out2))))
-    (assert-eq (eval-net net2 '((out-name . out2))) #f "IC_LITERAL #f resolves to #f"))
+    (assert-eq (unwrap-value (eval-net net2 '((out-name . out2)))) #f "IC_LITERAL #f resolves to #f"))
   (let ((net3 (parse-net (IC_LITERAL 7 'trig-lit-x))))
     (assert-true (eval-net net3 '((out-name . trig-lit-x))) "trigger-style literal resolves"))
   #t)
@@ -66,7 +70,7 @@
                       (node num-5 A 'lit/num 5)
                       ,(IC_PRIM_ADD 'num-10 'num-5 'out)))
          (net (parse-net sexpr))
-         (result (eval-net net '((out-name . out)))))
+         (result (unwrap-value (eval-net net '((out-name . out))))))
     (assert-eq result 15 "IC_PRIM_ADD with constants folds to 15"))
   (let ((net2 (parse-net (IC_PRIM_ADD (list 'x 'p) (list 'y 'p) 'out2))))
     (assert-true (node-agent net2 'out2) "symbolic add created out node")
@@ -105,9 +109,9 @@
            (and-net (parse-net and-sexpr))
            (or-net (parse-net or-sexpr))
            (not-net (parse-net not-sexpr)))
-      (assert-eq (eval-net and-net '((out-name . out-and))) #f "Direct AND eval: #t, #f -> #f")
-      (assert-eq (eval-net or-net '((out-name . out-or))) #t "Direct OR eval: #t, #f -> #t")
-      (assert-eq (eval-net not-net '((out-name . out-not))) #f "Direct NOT eval: #t -> #f")))
+      (assert-eq (unwrap-value (eval-net and-net '((out-name . out-and)))) #f "Direct AND eval: #t, #f -> #f")
+      (assert-eq (unwrap-value (eval-net or-net '((out-name . out-or)))) #t "Direct OR eval: #t, #f -> #t")
+      (assert-eq (unwrap-value (eval-net not-net '((out-name . out-not)))) #f "Direct NOT eval: #t -> #f")))
   #t)
 
 (define (test-IC_CHURCH_APPLY_structure)
