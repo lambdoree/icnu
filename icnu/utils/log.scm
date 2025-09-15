@@ -17,8 +17,6 @@
 
 (define (debugf level fmt . args)
   (when (>= (debug-level?) level)
-    ;; Use apply with an explicit arg-list so format-string receives the
-    ;; destination port followed by the format string and its arguments.
     (apply format-string (cons (current-output-port) (cons fmt args)))
     (force-output (current-output-port))))
 

@@ -49,7 +49,7 @@
 (define (icnu-match pat datum)
   (cond
    ((symbol? pat)
-    (if (char=? (string-ref (symbol->string pat) 0) #\?) ; variable pattern ?x
+    (if (char=? (string-ref (symbol->string pat) 0) #\?)
         #t
         (eq? pat datum)))
    ((pair? pat)
@@ -72,7 +72,7 @@
           (else (any-null? (cdr ls)))))
 
   (cond
-    ((null? lists) #t)                         ; (andmap p) ⇒ #t
+    ((null? lists) #t)
     (else
      (let loop ((ls lists))
        (if (any-null? ls)

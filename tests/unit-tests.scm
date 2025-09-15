@@ -3,7 +3,7 @@
              (icnu utils assertions)
              (icnu icnu)
              (icnu eval)
-             (icnu stdlib ic-lib)
+             (icnu stdlib icnu-lib)
              (icnu stdlib unit)
              (icnu utils log))
 
@@ -11,8 +11,8 @@
 
 (define add-one-body
   `(par
-    ,@(IC_LITERAL 1 'one)
-    ,@(IC_PRIM_ADD '(in-pack l) '(one p) 'ret)
+    ,(ICNU_LITERAL 1 'one)
+    ,(ICNU_PRIM_ADD '(in-pack l) '(one p) 'ret)
     ))
 
 (define add-one-unit-sexpr
@@ -20,9 +20,10 @@
 
 (define caller-sexpr
   (append
-    (IC_LITERAL 3 'v3)
-    (IC_NIL 'nil2)
-    (list '(node result C))
+    (list
+      (ICNU_LITERAL 3 'v3)
+      (ICNU_NIL 'nil2)
+      '(node result C))
     (IC_CALL_UNIT 'add-one '(v3 p) '(nil2 p) 'result)))
 
 (define combined-sexpr

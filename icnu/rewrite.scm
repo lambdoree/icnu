@@ -131,26 +131,17 @@
     (if (memq tag '(prim/eq prim/lt prim/gt prim/add prim/if))
         *unresolved*
         (call-with-values
-         (lambda () (peers-of net n))
-         (lambda (p-peer l-peer r-peer)
-           (let ((next (follow-port-peer net n current-port)))
-             (cond
-               ;; direct peer on this port: follow it
+            (lambda () (peers-of net n))
+          (lambda (p-peer l-peer r-peer)
+            (let ((next (follow-port-peer net n current-port)))
+              (cond
                (next
                 (let ((res (recur next (- k 1) seen)))
                   (if (not (eq? res *unresolved*)) res *unresolved*)))
-               ;; pass-through A node: no inputs, but has principal peer
                ((and (not l-peer) (not r-peer) p-peer)
                 (let ((res (recur p-peer (- k 1) seen)))
                   (if (not (eq? res *unresolved*)) res *unresolved*)))
-               ;; applicator-like node at principal port: try to resolve both inputs
                ((and (eq? current-port 'p) l-peer r-peer)
-                ;; Try to eagerly extract endpoints or literal values from the input peers first.
-                ;; If recursion yields a concrete value we use it. If recursion returns
-                ;; *unresolved* but the raw peer endpoint exists (e.g. a pair endpoint
-                ;; like (the-dest . p)), use that endpoint as the candidate so that
-                ;; applicator patterns A(dest,val) can be recognized even when the
-                ;; dest is represented as an endpoint rather than a folded literal.
                 (let* ((l-val
                         (let ((res (recur l-peer (- k 1) seen)))
                           (if (not (eq? res *unresolved*)) res
@@ -160,10 +151,8 @@
                           (if (not (eq? res *unresolved*)) res
                               (if (and (pair? r-peer) (symbol? (car r-peer))) r-peer *unresolved*)))))
                   (cond
-                   ;; A(l=dest, r=val) -> val
                    ((and (pair? l-val) (symbol? (car l-val)) (valid-port? (cdr l-val)) (not (eq? r-val *unresolved*)))
                     r-val)
-                   ;; A(l=val, r=dest) -> val
                    ((and (pair? r-val) (symbol? (car r-val)) (valid-port? (cdr r-val)) (not (eq? l-val *unresolved*)))
                     l-val)
                    (else *unresolved*))))
@@ -177,232 +166,232 @@
         (recur p-peer (- k 1) seen)
         *unresolved*)))
 
-  (define (rl-compute-limit maybe-limit)
-    (if (null? maybe-limit) *resolve-literal-limit* (car maybe-limit)))
+(define (rl-compute-limit maybe-limit)
+  (if (null? maybe-limit) *resolve-literal-limit* (car maybe-limit)))
 
-  (define (rl-initial-queue ep limit)
-    (list (cons ep limit)))
+(define (rl-initial-queue ep limit)
+  (list (cons ep limit)))
 
-  (define (rl-skip-item? current-ep k)
-    (or (not current-ep) (<= k 0)))
+(define (rl-skip-item? current-ep k)
+  (or (not current-ep) (<= k 0)))
 
-  (define (rl-seen? seen key) (hash-ref seen key #f))
-  (define (rl-mark-seen! seen key) (hash-set! seen key #t))
+(define (rl-seen? seen key) (hash-ref seen key #f))
+(define (rl-mark-seen! seen key) (hash-set! seen key #t))
 
-  (define (rl-enqueue q ep k)
-    (if ep (append q (list (cons ep (- k 1)))) q))
+(define (rl-enqueue q ep k)
+  (if ep (append q (list (cons ep (- k 1)))) q))
 
-  (define (rl-handle-literal-node net n)
-    (resolve-from-literal-node net n))
+(define (rl-handle-literal-node net n)
+  (resolve-from-literal-node net n))
 
-  (define (rl-handle-A-input net current-ep k rest loop)
-    (let ((peer-ep (peer net current-ep)))
-      (if peer-ep
-          (loop (cons (cons peer-ep (- k 1)) rest))
-          (loop rest))))
+(define (rl-handle-A-input net current-ep k rest loop)
+  (let ((peer-ep (peer net current-ep)))
+    (if peer-ep
+        (loop (cons (cons peer-ep (- k 1)) rest))
+        (loop rest))))
 
-  (define (resolve-literal-ep* net ep k seen)
-    (letrec ((recur
-              (lambda (current-ep kk s)
-                (if (or (not current-ep) (<= kk 0))
-                    *unresolved*
-                    (let ((key (ep-key current-ep)))
-                      (if (hash-ref s key #f)
-                          *unresolved*
-                          (begin
-                            (hash-set! s key #t)
-                            (if (and (pair? current-ep) (symbol? (car current-ep)))
-                                (let* ((n (car current-ep))
-                                       (p-rest (cdr current-ep))
-                                       (port (if (symbol? p-rest) p-rest
-                                                 (and (pair? p-rest) (null? (cdr p-rest)) (car p-rest))))
-                                       (agent (node-agent net n))
-                                       (tag (node-tag net n)))
-                                  (cond
-                                   ((is-literal-node? net n)
-                                    (get-literal-value net n))
+(define (resolve-literal-ep* net ep k seen)
+  (letrec ((recur
+            (lambda (current-ep kk s)
+              (if (or (not current-ep) (<= kk 0))
+                  *unresolved*
+                  (let ((key (ep-key current-ep)))
+                    (if (hash-ref s key #f)
+                        *unresolved*
+                        (begin
+                          (hash-set! s key #t)
+                          (if (and (pair? current-ep) (symbol? (car current-ep)))
+                              (let* ((n (car current-ep))
+                                     (p-rest (cdr current-ep))
+                                     (port (if (symbol? p-rest) p-rest
+                                               (and (pair? p-rest) (null? (cdr p-rest)) (car p-rest))))
+                                     (agent (node-agent net n))
+                                     (tag (node-tag net n)))
+                                (cond
+                                 ((is-literal-node? net n)
+                                  (get-literal-value net n))
 
-                                   ((eq? agent 'A)
-                                    (resolve-from-A-node net n port kk s recur))
+                                 ((eq? agent 'A)
+                                  (resolve-from-A-node net n port kk s recur))
 
-                                   ((eq? agent 'C)
-                                    (resolve-from-C-node net n port kk s recur))
+                                 ((eq? agent 'C)
+                                  (resolve-from-C-node net n port kk s recur))
 
-                                   (else
-                                    (let ((p (peer net current-ep)))
-                                      (if p (recur p (- kk 1) s) *unresolved*)))))
-                                *unresolved*))))))))
-      (recur ep k seen)))
+                                 (else
+                                  (let ((p (peer net current-ep)))
+                                    (if p (recur p (- kk 1) s) *unresolved*)))))
+                              *unresolved*))))))))
+    (recur ep k seen)))
 
-  (define (resolve-literal-ep net ep . maybe-limit)
-    (let ((limit (rl-compute-limit maybe-limit)))
-      (let ((seen (make-hash-table)))
-        (resolve-literal-ep* net ep limit seen))))
+(define (resolve-literal-ep net ep . maybe-limit)
+  (let ((limit (rl-compute-limit maybe-limit)))
+    (let ((seen (make-hash-table)))
+      (resolve-literal-ep* net ep limit seen))))
 
 
-  (define (rewrite-pass-AC! net)
-    (let ((changed? #f)
-		      (pairs (find-active-pairs net)))
-	    (for-each
-       (lambda (pair)
-         (match pair
-           (((a . 'A) (c . 'C))
-            (let ((skip? (let ((p (peer net (cons c 'p)))
-                               (l (peer net (cons c 'l)))
-                               (r (peer net (cons c 'r))))
-						               (or (and p (eq? 'prim/if (node-tag net (car p))))
-							                 (and l (eq? 'prim/if (node-tag net (car l))))
-							                 (and r (eq? 'prim/if (node-tag net (car r))))))))
-			        (unless skip?
-                (when (rule-AC! net a c)
-				          (set! changed? #t)))))
-           (((c . 'C) (a . 'A))
-            (let ((skip? (let ((p (peer net (cons c 'p)))
-                               (l (peer net (cons c 'l)))
-                               (r (peer net (cons c 'r))))
-						               (or (and p (eq? 'prim/if (node-tag net (car p))))
-							                 (and l (eq? 'prim/if (node-tag net (car l))))
-							                 (and r (eq? 'prim/if (node-tag net (car r))))))))
-			        (unless skip?
-                (when (rule-AC! net a c)
-				          (set! changed? #t)))))
-           (_ #f)))
-       pairs)
-	    changed?))
+(define (rewrite-pass-AC! net)
+  (let ((changed? #f)
+		    (pairs (find-active-pairs net)))
+	  (for-each
+     (lambda (pair)
+       (match pair
+         (((a . 'A) (c . 'C))
+          (let ((skip? (let ((p (peer net (cons c 'p)))
+                             (l (peer net (cons c 'l)))
+                             (r (peer net (cons c 'r))))
+						             (or (and p (eq? 'prim/if (node-tag net (car p))))
+							               (and l (eq? 'prim/if (node-tag net (car l))))
+							               (and r (eq? 'prim/if (node-tag net (car r))))))))
+			      (unless skip?
+              (when (rule-AC! net a c)
+				        (set! changed? #t)))))
+         (((c . 'C) (a . 'A))
+          (let ((skip? (let ((p (peer net (cons c 'p)))
+                             (l (peer net (cons c 'l)))
+                             (r (peer net (cons c 'r))))
+						             (or (and p (eq? 'prim/if (node-tag net (car p))))
+							               (and l (eq? 'prim/if (node-tag net (car l))))
+							               (and r (eq? 'prim/if (node-tag net (car r))))))))
+			      (unless skip?
+              (when (rule-AC! net a c)
+				        (set! changed? #t)))))
+         (_ #f)))
+     pairs)
+	  changed?))
 
-  (define (rewrite-pass-AE! net)
-    (let ((changed? #f)
-		      (pairs (find-active-pairs net)))
-	    (for-each
-       (lambda (pair)
-         (match pair
-           (((a . 'A) (e . 'E))
-            (when (rule-AE! net a e)
-			        (set! changed? #t)))
-           (((e . 'E) (a . 'A))
-            (when (rule-AE! net a e)
-			        (set! changed? #t)))
-           (_ #f)))
-       pairs)
-	    changed?))
+(define (rewrite-pass-AE! net)
+  (let ((changed? #f)
+		    (pairs (find-active-pairs net)))
+	  (for-each
+     (lambda (pair)
+       (match pair
+         (((a . 'A) (e . 'E))
+          (when (rule-AE! net a e)
+			      (set! changed? #t)))
+         (((e . 'E) (a . 'A))
+          (when (rule-AE! net a e)
+			      (set! changed? #t)))
+         (_ #f)))
+     pairs)
+	  changed?))
 
-  (define (ensure-global-bool-node net val)
-    (let ((name (icnu-gensym "lit-bool-")))
-      (add-node! net name 'A)
-      (set-node-tag! net name 'lit/bool)
-      (set-node-meta! net name val)
-      (mark-nu! net name)
-      name))
+(define (ensure-global-bool-node net val)
+  (let ((name (icnu-gensym "lit-bool-")))
+    (add-node! net name 'A)
+    (set-node-tag! net name 'lit/bool)
+    (set-node-meta! net name val)
+    (mark-nu! net name)
+    name))
 
-  (define (ensure-global-num-node net val)
-    (let ((name (icnu-gensym "lit-num-")))
-      (add-node! net name 'A)
-      (set-node-tag! net name 'lit/num)
-      (set-node-meta! net name val)
-      (mark-nu! net name)
-      name))
+(define (ensure-global-num-node net val)
+  (let ((name (icnu-gensym "lit-num-")))
+    (add-node! net name 'A)
+    (set-node-tag! net name 'lit/num)
+    (set-node-meta! net name val)
+    (mark-nu! net name)
+    name))
 
-  (define (rewrite-pass-if-fold! net)
-    (let ((changed? #f))
-	    (for-each
-	     (lambda (if-name)
-	       (when (eq? (node-tag net if-name) 'prim/if)
-		       (let* ((p-peer (peer net (cons if-name 'p)))
-				          (cond-copy (and p-peer (car p-peer)))
-				          (cond-ep (and cond-copy (peer net (cons cond-copy 'p))))
-				          (cond-val (and cond-ep (resolve-literal-ep net cond-ep *resolve-literal-limit*))))
-		         (when (boolean? cond-val)
-			         (let* ((kept-port (if cond-val 'l 'r))
-					            (pruned-port (if cond-val 'r 'l))
-					            (kept-branch-ep (peer net (cons if-name kept-port)))
-					            (pruned-branch-ep (peer net (cons if-name pruned-port)))
-					            (output-dest (and cond-copy (peer net (cons cond-copy 'r)))))
-			           (let ((kept-copier (and kept-branch-ep (car kept-branch-ep))))
-				           (when (and kept-copier output-dest)
-				             (let ((value-source (peer net (cons kept-copier 'p))))
-					             (when value-source
-					               (let ((source-node-name (car value-source)))
-						               (if (is-literal-node? net source-node-name)
-							                 (rewire! net output-dest value-source)
-							                 (let ((real-source (peer net value-source)))
-							                   (when real-source
-								                   (rewire! net output-dest real-source)))))))))
-			           (when pruned-branch-ep (delete-node! net (car pruned-branch-ep)))
-			           (delete-node! net if-name)
-			           (when cond-copy (delete-node! net cond-copy))
-			           (set! changed? #t))))))
-	     (all-nodes-with-agent net 'A))
-	    changed?))
+(define (rewrite-pass-if-fold! net)
+  (let ((changed? #f))
+	  (for-each
+	   (lambda (if-name)
+	     (when (eq? (node-tag net if-name) 'prim/if)
+		     (let* ((p-peer (peer net (cons if-name 'p)))
+				        (cond-copy (and p-peer (car p-peer)))
+				        (cond-ep (and cond-copy (peer net (cons cond-copy 'p))))
+				        (cond-val (and cond-ep (resolve-literal-ep net cond-ep *resolve-literal-limit*))))
+		       (when (boolean? cond-val)
+			       (let* ((kept-port (if cond-val 'l 'r))
+					          (pruned-port (if cond-val 'r 'l))
+					          (kept-branch-ep (peer net (cons if-name kept-port)))
+					          (pruned-branch-ep (peer net (cons if-name pruned-port)))
+					          (output-dest (and cond-copy (peer net (cons cond-copy 'r)))))
+			         (let ((kept-copier (and kept-branch-ep (car kept-branch-ep))))
+				         (when (and kept-copier output-dest)
+				           (let ((value-source (peer net (cons kept-copier 'p))))
+					           (when value-source
+					             (let ((source-node-name (car value-source)))
+						             (if (is-literal-node? net source-node-name)
+							               (rewire! net output-dest value-source)
+							               (let ((real-source (peer net value-source)))
+							                 (when real-source
+								                 (rewire! net output-dest real-source)))))))))
+			         (when pruned-branch-ep (delete-node! net (car pruned-branch-ep)))
+			         (delete-node! net if-name)
+			         (when cond-copy (delete-node! net cond-copy))
+			         (set! changed? #t))))))
+	   (all-nodes-with-agent net 'A))
+	  changed?))
 
-  (define (rewrite-pass-const-fold! net)
-    (let ((changed? #f))
-	    (for-each
-	     (lambda (n)
-	       (let ((tag (node-tag net n)))
-		       (when (memq tag '(prim/eq prim/lt prim/gt prim/add))
-		         (let* ((l-ep (peer net (cons n 'l)))
-				            (r-ep (peer net (cons n 'r)))
-				            (l-val (if l-ep (resolve-literal-ep net l-ep *resolve-literal-limit*) *unresolved*))
-				            (r-val (if r-ep (resolve-literal-ep net r-ep *resolve-literal-limit*) *unresolved*)))
-			         (when (and (not (eq? l-val *unresolved*)) (not (eq? r-val *unresolved*)))
-			           (let ((res
-					              (case tag
-						              ((prim/lt) (and (number? l-val) (number? r-val) (< l-val r-val)))
-						              ((prim/gt) (and (number? l-val) (number? r-val) (> l-val r-val)))
-						              ((prim/eq) (equal? l-val r-val))
-						              ((prim/add) (and (number? l-val) (number? r-val) (+ l-val r-val)))
-						              (else #f))))
-				           (when (or (boolean? res) (number? res))
-				             (let ((lit (if (boolean? res)
-								                    (ensure-global-bool-node net res)
-								                    (ensure-global-num-node net res)))
-						               (out-ep (peer net (cons n 'p))))
-					             (when out-ep (rewire! net out-ep (cons lit 'p)))
-					             (delete-node! net n)
-					             (set! changed? #t)
-					             (debugf 1 "rewrite-pass-const-fold!: folded ~a -> ~a\n" n res)))))))))
-	     (all-nodes-with-agent net 'A))
-	    changed?))
+(define (rewrite-pass-const-fold! net)
+  (let ((changed? #f))
+	  (for-each
+	   (lambda (n)
+	     (let ((tag (node-tag net n)))
+		     (when (memq tag '(prim/eq prim/lt prim/gt prim/add))
+		       (let* ((l-ep (peer net (cons n 'l)))
+				          (r-ep (peer net (cons n 'r)))
+				          (l-val (if l-ep (resolve-literal-ep net l-ep *resolve-literal-limit*) *unresolved*))
+				          (r-val (if r-ep (resolve-literal-ep net r-ep *resolve-literal-limit*) *unresolved*)))
+			       (when (and (not (eq? l-val *unresolved*)) (not (eq? r-val *unresolved*)))
+			         (let ((res
+					            (case tag
+						            ((prim/lt) (and (number? l-val) (number? r-val) (< l-val r-val)))
+						            ((prim/gt) (and (number? l-val) (number? r-val) (> l-val r-val)))
+						            ((prim/eq) (equal? l-val r-val))
+						            ((prim/add) (and (number? l-val) (number? r-val) (+ l-val r-val)))
+						            (else #f))))
+				         (when (or (boolean? res) (number? res))
+				           (let ((lit (if (boolean? res)
+								                  (ensure-global-bool-node net res)
+								                  (ensure-global-num-node net res)))
+						             (out-ep (peer net (cons n 'p))))
+					           (when out-ep (rewire! net out-ep (cons lit 'p)))
+					           (delete-node! net n)
+					           (set! changed? #t)
+					           (debugf 1 "rewrite-pass-const-fold!: folded ~a -> ~a\n" n res)))))))))
+	   (all-nodes-with-agent net 'A))
+	  changed?))
 
-  (define (rewrite-pass-wire-cleanup! net)
-    (let ((changed? #f))
-	    (for-each
-	     (lambda (c)
-	       (let ((p (peer net (cons c 'p)))
-			         (l (peer net (cons c 'l)))
-			         (r (peer net (cons c 'r))))
-		       (when (and (not p) (not l) (not r))
-		         (delete-node! net c)
-		         (set! changed? #t))))
-	     (all-nodes-with-agent net 'C))
-	    changed?))
+(define (rewrite-pass-wire-cleanup! net)
+  (let ((changed? #f))
+	  (for-each
+	   (lambda (c)
+	     (let ((p (peer net (cons c 'p)))
+			       (l (peer net (cons c 'l)))
+			       (r (peer net (cons c 'r))))
+		     (when (and (not p) (not l) (not r))
+		       (delete-node! net c)
+		       (set! changed? #t))))
+	   (all-nodes-with-agent net 'C))
+	  changed?))
 
-  (define (rewrite-pass-AA-merge! net)
-    (let ((changed? #f)
-		      (pairs (find-active-pairs net)))
-	    (for-each
-	     (lambda (pair)
-	       (match pair
-		       (((a . 'A) (b . 'A))
-		        (let ((ta (node-tag net a)) (tb (node-tag net b)))
-			        (unless (or (eq? ta 'user/output) (eq? tb 'user/output))
-			          (when (rule-AA! net a b #f)
-				          (set! changed? #t)))))
-		       (_ #f)))
-	     pairs)
-	    changed?))
+(define (rewrite-pass-AA-merge! net)
+  (let ((changed? #f)
+		    (pairs (find-active-pairs net)))
+	  (for-each
+	   (lambda (pair)
+	     (match pair
+		     (((a . 'A) (b . 'A))
+		      (let ((ta (node-tag net a)) (tb (node-tag net b)))
+			      (unless (or (eq? ta 'user/output) (eq? tb 'user/output))
+			        (when (rule-AA! net a b #f)
+				        (set! changed? #t)))))
+		     (_ #f)))
+	   pairs)
+	  changed?))
 
-  (define (rewrite-pass-CE-annihilation! net)
-    (let ((changed? #f)
-		      (pairs (find-active-pairs net)))
-	    (for-each
-	     (lambda (pair)
-	       (match pair
-		       (((c . 'C) (e . 'E))
-		        (when (rule-CE! net c e) (set! changed? #t)))
-		       (((e . 'E) (c . 'C))
-		        (when (rule-CE! net c e) (set! changed? #t)))
-		       (_ #f)))
-	     pairs)
-	    changed?))
+(define (rewrite-pass-CE-annihilation! net)
+  (let ((changed? #f)
+		    (pairs (find-active-pairs net)))
+	  (for-each
+	   (lambda (pair)
+	     (match pair
+		     (((c . 'C) (e . 'E))
+		      (when (rule-CE! net c e) (set! changed? #t)))
+		     (((e . 'E) (c . 'C))
+		      (when (rule-CE! net c e) (set! changed? #t)))
+		     (_ #f)))
+	   pairs)
+	  changed?))
 

@@ -7,13 +7,13 @@
   #:use-module (icnu utils internal)
   #:export (IC_IF IC_Y
 		              JOIN-REPLACE JOIN-MAX
-		              IC_LITERAL IC_EQ_CONST IC_LT_CONST IC_GT_CONST
-		              IC_AND IC_OR IC_NOT IC_COPY
+		              IC_AND IC_OR IC_COPY
+                  IC_TRUE IC_FALSE
 		              IC_PRIM_ADD IC_PRIM_SUB IC_PRIM_ADD_RUNTIME IC_APPLY
-		              IC_MK_TRUE IC_MK_FALSE
                   IC_CHURCH-APPLY IC_CONS IC_NIL IC_FIRST IC_REST IC_FOLD
 			            IC_PURE_ID IC_PURE_PAIR IC_PURE_FST IC_PURE_SND IC_PURE_LEFT IC_PURE_RIGHT
-			            IC_PURE_EITHER))
+			            IC_PURE_EITHER
+                  IC_GENERIC_CONST_OP))
 
 (define (IC_IF c-port t-port e-port out-node)
   (let* ((if-impl (icnu-gensym "if-impl-"))
@@ -35,36 +35,20 @@
 
 (define (JOIN-REPLACE x y out)
   (let ((e (icnu-gensym "erase_")))
-    `(par 
-      (node ,e E)
+    `((node ,e E)
       (wire (,e p) (,x p))
       (wire (,out p) (,y p)))))
 
 (define (JOIN-MAX x y out)
   (let ((comp (icnu-gensym "max_comp_")))
-    `(par 
-      (node ,comp A)
+    `((node ,comp A)
       (wire (,comp p) (,out p)))))
-
-(define (IC_LITERAL val out)
-  (cond
-   ((boolean? val)
-    `((node ,out A lit/bool ,val)))
-   ((number? val)
-    `((node ,out A lit/num ,val)))
-   ((or (symbol? val) (string? val))
-    `((node ,out A lit/str ,(if (symbol? val) `',val val))))
-   ((pair? val)
-    `((node ,out A lit/pair ',val)))
-   (else
-    (error "IC_LITERAL: unsupported literal type" val))))
 
 (define (IC_APPLY f-port x-port out)
   (let* ((out-node (if (symbol? out) out out))
          (c-f (icnu-gensym "app-f-"))
          (c-x (icnu-gensym "app-x-")))
-    `(par
-      (node ,out-node A user/apply-out)
+    `((node ,out-node A user/apply-out)
       (node ,c-f C)
       (node ,c-x C)
       ,(wire-or-list f-port c-f)
@@ -73,15 +57,11 @@
       (wire (,c-x l) (,out-node r)))))
 
 (define (IC_GENERIC_CONST_OP const-val in-port out-node tag)
-  (let* ((lit (icnu-gensym "lit-"))
-         (in-copy (icnu-gensym "in-copy-")))
-    (append
-     (IC_LITERAL const-val lit)
-     `((node ,out-node A ,tag)
-       (node ,in-copy C)
-       ,(wire-or-list in-port in-copy)
-       (wire (,in-copy l) (,out-node l))
-       (wire (,lit p) (,out-node r))))))
+  (let ((in-copy (icnu-gensym "in-copy-")))
+    `((node ,out-node A ,tag)
+      (node ,in-copy C)
+      ,(wire-or-list in-port in-copy)
+      (wire (,in-copy l) (,out-node l)))))
 
 (define (IC_EQ_CONST const-val in-port out-node)
   (IC_GENERIC_CONST_OP const-val in-port out-node 'prim/eq))
@@ -108,21 +88,16 @@
 (define (IC_AND in1-port in2-port out-node)
   `(par
     (node ,out-node A)
-    ,(IC_IF in1-port in2-port in1-port out-node)))
+    ,@(IC_IF in1-port in2-port in1-port out-node)))
 
 (define (IC_OR in1-port in2-port out-node)
   `(par
     (node ,out-node A)
-    ,(IC_IF in1-port in1-port in2-port out-node)))
+    ,@(IC_IF in1-port in1-port in2-port out-node)))
 
 (define (IC_NOT in-port out-node)
-  (let ((true-node (icnu-gensym "true-"))
-        (false-node (icnu-gensym "false-")))
-    (append
-     `((node ,out-node A))
-     (IC_LITERAL #t true-node)
-     (IC_LITERAL #f false-node)
-     (IC_IF in-port (list false-node 'r) (list true-node 'r) out-node))))
+  `((node ,out-node A prim/not)
+    ,(wire-or-list in-port out-node 'l)))
 
 (define (IC_PRIM_ADD in1 in2 out)
   (let ((add-impl (icnu-gensym "add-"))
@@ -190,11 +165,17 @@
       (wire (,sub-impl p) (,out-c p))
       (wire (,out-c l) (,out p)))))
 
+(define (IC_TRUE b)
+  `((node ,b A)))
+
+(define (IC_FALSE b)
+  `((node ,b A)))
+
 (define (IC_MK_TRUE b)
-  `(par (node ,b A lit/bool #t)))
+  `((node ,b A)))
 
 (define (IC_MK_FALSE b)
-  `(par (node ,b A lit/bool #f)))
+  `((node ,b A)))
 
 (define (IC_Y fn out)
   (let* ((y-node   (icnu-gensym "Y"))
@@ -221,8 +202,8 @@
 (define (church-zero-net x-port out-target)
   (let ((from-ep (icnu-normalize-ep x-port 'p))
         (to-ep   (icnu-normalize-ep out-target 'p)))
-    `(par ,@(if (symbol? out-target) `((node ,out-target A)) '())
-          (wire ,from-ep ,to-ep))))
+    `(,@(if (symbol? out-target) `((node ,out-target A)) '())
+      (wire ,from-ep ,to-ep))))
 
 (define (build-copier-fanout input-ep k)
   (letrec ((go (lambda (in k)
@@ -237,8 +218,7 @@
                             (netL (cdr L)) (netR (cdr R))
                             (kids (icnu-filter (lambda (x) x) (list netL netR))))
                        (cons outs
-                             `(par
-                               (node ,c C)
+                             `((node ,c C)
                                ,(wire-or-list in c)
                                ,@kids)))))))
     (go input-ep k)))
@@ -275,8 +255,7 @@
         `(wire (,first p) ,out-target))))
 
 (define (assemble-church-net apps copier-net app-forms LWs CWs lastW out-target outW)
-  `(par
-    ,@(if copier-net (list copier-net) '())
+  `(,@(if copier-net copier-net '())
     ,@app-forms
     ,@LWs
     ,@CWs
@@ -316,9 +295,7 @@
       (node ,first-c C)
       (node ,rest-c C)
       ,(if (and (list? head) (eq? (car head) 'quote))
-           (let ((lit-name (icnu-gensym "cons-lit-")))
-             `(par ,@(IC_LITERAL (cadr head) lit-name)
-                  (wire (,lit-name p) (,first-c p))))
+           (error "IC_CONS (ic-lib): literal heads are not supported in pure IC; use icnu-lib")
            (if (symbol? head)
                `(wire (,head p) (,first-c p))
                `(wire ,head (,first-c p))))

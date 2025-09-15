@@ -5,7 +5,7 @@
   #:use-module (icnu utils format)
   #:use-module (icnu utils log)
   #:use-module (icnu tools icnu-validate)
-  #:export (eval-icnu-string eval-net reduce-net-to-normal-form *default-reduction-passes* read-sexpr-from-string
+  #:export (eval-icnu-string eval-net reduce-net-to-normal-form *default-reduction-passes* ic-only-reduction-passes read-sexpr-from-string
                              find-applicator-for-target))
 
 (define (read-sexpr-from-string s)
@@ -20,6 +20,13 @@
           rewrite-pass-AE!
           rewrite-pass-CE-annihilation!
           rewrite-pass-wire-cleanup!)))
+
+(define (ic-only-reduction-passes)
+  (list rewrite-pass-AA-merge!
+        rewrite-pass-AC!
+        rewrite-pass-AE!
+        rewrite-pass-CE-annihilation!
+        rewrite-pass-wire-cleanup!))
 
 (define (apply-reduction-passes! net passes)
   (let ((changed? #f))
@@ -37,6 +44,9 @@
                    (cond
                     ((not v) (*default-reduction-passes*))
                     ((procedure? v) (v))
+                    ((symbol? v)
+                     (let ((proc (eval v (current-module))))
+                       (if (procedure? proc) (proc) (*default-reduction-passes*))))
                     ((and (list? v) (list? (car v))
                           (icnu-andmap (lambda (x) (or (procedure? x) (symbol? x))) (car v)))
                      (map (lambda (p) (if (procedure? p) p (eval p (current-module)))) (car v)))

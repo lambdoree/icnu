@@ -1,7 +1,6 @@
 (define-module (icnu tools icnu-inject)
   #:use-module (icnu utils internal)
   #:use-module (icnu utils compat)
-  ;; compat: using icnu-gensym from compat module
   #:use-module (icnu icnu)
   #:use-module (icnu stdlib icnu-lib)
   #:export (generate-injection-form))
@@ -12,11 +11,11 @@
                (lambda (lst)
                  (if (null? lst)
                      (let ((n (icnu-gensym "inj-nil-")))
-                       (set! acc (cons (IC_NIL n) acc))
+                       (set! acc (cons (ICNU_NIL n) acc))
                        n)
                      (let* ((rev  (reverse lst))
                             (tail (let ((n (icnu-gensym "inj-nil-")))
-                                    (set! acc (cons (IC_NIL n) acc))
+                                    (set! acc (cons (ICNU_NIL n) acc))
                                     n)))
                        (letrec ((cons-chain
                                  (lambda (elts tail-name)
@@ -24,7 +23,7 @@
                                        tail-name
                                        (let* ((head-name (make-val (car elts)))
                                               (cons-n   (icnu-gensym "inj-cons-")))
-                                         (set! acc (cons (IC_CONS (list head-name 'p) tail-name cons-n) acc))
+                                         (set! acc (cons (ICNU_CONS (list head-name 'p) tail-name cons-n) acc))
                                          (cons-chain (cdr elts) cons-n))))))
                          (cons-chain rev tail))))))
               (make-val
@@ -32,7 +31,7 @@
                  (cond
                   ((or (boolean? v) (number? v) (symbol? v) (string? v))
                    (let ((tmp (icnu-gensym "inj-lit-")))
-                     (set! acc (cons (IC_LITERAL v tmp) acc))
+                     (set! acc (cons (ICNU_LITERAL v tmp) acc))
                      tmp))
                   ((list? v)
                    (emit-list v))
@@ -48,7 +47,7 @@
              (cond
               ((or (boolean? val) (number? val) (symbol? val) (string? val))
                (let ((tmp (icnu-gensym (string-append "inj-lit-" (symbol->string id) "-"))))
-                 (set! acc (cons (IC_LITERAL val tmp) acc))
+                 (set! acc (cons (ICNU_LITERAL val tmp) acc))
                  (set! acc (cons `(wire (,tmp p) (,id r)) acc))))
               ((list? val)
                (let ((vname (make-val val)))

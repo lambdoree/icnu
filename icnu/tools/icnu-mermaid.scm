@@ -20,7 +20,7 @@
 
 (define (escape-ml-label s)
   (let* ((raw (if (symbol? s) (symbol->string s) (format-string #f "~a" s)))
-         (escaped-backslash (string-replace-char raw "\\" "\\\\"))
+         (escaped-backslash (string-replace-char raw #\\ "\\\\"))
          (escaped-quote (string-replace-char escaped-backslash "\"" "\\\""))
          (escaped-newline (string-replace-char escaped-quote "\n" "\\n"))
          (escaped-lb (string-replace-char escaped-newline "[" "_"))

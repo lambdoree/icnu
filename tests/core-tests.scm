@@ -205,11 +205,11 @@
     #t))
 
 (define (test-parse-net-malformed-wire)
-  (let ((malformed-input '(par (wire (a p))))) ; wire with only one endpoint
+  (let ((malformed-input '(par (wire (a p)))))
     (assert-true
      (catch #t
-       (lambda () (parse-net malformed-input) #f) ; return #f on success
-       (lambda (key . args) #t)) ; return #t on any exception
+       (lambda () (parse-net malformed-input) #f)
+       (lambda (key . args) #t))
      "parse-net should throw an error on malformed wire"))
   #t)
 
@@ -222,8 +222,8 @@
     (link-peers! n (endpoint 'a 'p) (endpoint 'b 'p))
     (assert-true
      (catch #t
-       (lambda () (link-peers! n (endpoint 'a 'p) (endpoint 'c 'p)) #f) ; #f on success
-       (lambda (key . args) #t)) ; #t on error
+       (lambda () (link-peers! n (endpoint 'a 'p) (endpoint 'c 'p)) #f)
+       (lambda (key . args) #t))
      "link-peers! with mode 'error should throw on conflict")
     #t))
 
@@ -304,8 +304,8 @@
    (catch #t
      (lambda ()
        (parse-net '(nu (x) (par (node x A))) #f)
-       #f) ; return #f on success (no error)
-     (lambda args #t)) ; return #t on error
+       #f)
+     (lambda args #t))
    "parse-net with use-nu? #f should error on (nu ...)")
   #t)
 

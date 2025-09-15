@@ -6,27 +6,16 @@
   #:use-module (icnu utils compat)
   #:export (IC_UNIT IC_CALL_UNIT))
 
-;; IC_UNIT : Unit 정의 전개자
-;;   name        : 심볼 — 유닛의 공개 이름(A 에이전트 노드로 생성)
-;;   in-names    : (listof 심볼) — (선언적) 입력 파라미터 심볼들 (본문에서 사용)
-;;   out-names   : (listof 심볼) — (선언적) 출력 파라미터 심볼들 (본문에서 사용)
-;;   ret-name    : 심볼 — 내부 결과(A 에이전트)
-;;   body        : S-식 — (par ...) 내부에 전개될 본체 배선(로컬 변수 포함)
-;; 반환값: (par ...) S-식
 (define (IC_UNIT name in-names out-names ret-name body)
   (let* ((body-forms (if (and (pair? body) (eq? (car body) 'par)) (cdr body) (if body (list body) '())))
-
-         ;; --- Auto-generate frame unpacking ---
          (frame-node (string->symbol (format-string #f "~a-frame" name)))
-         (in-pack-node 'in-pack)   ;; Use a stable, conventional name
-         (out-pack-node 'out-pack) ;; Use a stable, conventional name
+         (in-pack-node 'in-pack)
+         (out-pack-node 'out-pack)
          (unpack-forms
-           `(;; IC_PURE_FST/SND will each declare their output node (in-pack/out-pack)
+           `(
              ,@(IC_PURE_FST (list frame-node 'l) in-pack-node)
              ,@(IC_PURE_SND (list frame-node 'l) out-pack-node)))
          (all-body-forms (append unpack-forms body-forms))
-
-         ;; --- Collect internal nodes for nu-scoping ---
          (collect
            (lambda (forms)
              (letrec ((walk
@@ -41,7 +30,6 @@
                            (else acc)))))
                (walk forms '()))))
          (body-decls (collect body-forms))
-         ;; The frame node is external (created by caller). in-pack/out-pack are internal.
          (auto-decls (list in-pack-node out-pack-node))
          (raw (append (list ret-name) body-decls auto-decls))
          (uniq

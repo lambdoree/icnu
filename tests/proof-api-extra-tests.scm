@@ -40,12 +40,12 @@
   (let* ((s "(par (node a A) (node b A) (wire (a p) (b p)))")
          (out-dir "tests/mermaid-temp-test-output")
          (cmd-rm (string-append "rm -rf " out-dir)))
-    (system cmd-rm) ; clean before
+    (system cmd-rm)
     (assert-true (run-steps-on-string->mermaid s 5 out-dir) "run-steps...->mermaid should return #t")
     (let* ((files (scandir out-dir (lambda (x) (not (string-prefix? "." x))))))
       (assert-true (>= (length files) 2) "at least two mermaid files should be created")
       (assert-true (string-suffix? ".mmd" (car files)) "files should have .mmd extension"))
-    (system cmd-rm) ; clean after
+    (system cmd-rm)
     #t))
 
 (run-tests "ProofAPI-Extra"

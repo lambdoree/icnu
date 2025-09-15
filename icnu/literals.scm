@@ -11,9 +11,13 @@
 (define (ic-literal-value net name)
   (if (ic-literal? net name)
       (let ((meta (ic:node-meta net name)))
-        (if (and (pair? meta) (eq? (car meta) 'quote))
-            (cadr meta)
-            meta))
+        (cond
+         ((and (pair? meta) (eq? (car meta) 'quote))
+          (cadr meta))
+         ((and (list? meta) (pair? meta) (pair? (car meta)))
+          (let ((p (assq 'value meta)))
+            (if p (cdr p) meta)))
+         (else meta)))
       name))
 
 (define (ic-make-literal-node! net name lit-tag lit-val)

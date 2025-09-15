@@ -9,6 +9,14 @@
 
 (set-debug-level! 0)
 
+(define (flatten-ic-forms forms)
+  (apply append
+    (map (lambda (form)
+           (if (and (list? form) (not (memq (car form) '(quote wire node par nu))))
+               (flatten-ic-forms form)
+               (list form)))
+         forms)))
+
 (define default-passes
   (list
    rewrite-pass-const-fold!
@@ -165,10 +173,10 @@
   (format-string #f "~a" (pretty-print net '((show-nu? . #t)))))
 
 (define (test-confluence-church-rosser-property)
-  (let* ((nets (list (make-const-fold-net) 
-                    (make-if-fold-boolean-net) 
+  (let* ((nets (list (make-const-fold-net)
+                    (make-if-fold-boolean-net)
                     (make-composite-net)
-                    (parse-net (IC_CHURCH-APPLY 3 'f 'x 'outc))))
+                    (parse-net (flatten-ic-forms (ICNU_CHURCH-APPLY 3 'f 'x 'outc)))))
         (max-steps 1000))
     (for-each
      (lambda (net)

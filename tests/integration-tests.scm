@@ -11,6 +11,14 @@
 
 (set-debug-level! 0)
 
+(define (flatten-ic-forms forms)
+  (apply append
+    (map (lambda (form)
+           (if (and (list? form) (not (memq (car form) '(quote wire node par nu))))
+               (flatten-ic-forms form)
+               (list form)))
+         forms)))
+
 (define (unwrap-value v)
   (cond
    ((and (pair? v) (eq? (car v) 'value)) (cdr v))
@@ -84,12 +92,13 @@
                      "unlimited reduction equals large numeric cap"))))
     #t))
 
-(define (test-IC_Y_small_finite)
+(define (test-ICNU_Y_small_finite)
   (let* ((fn-name (gensym "yf-"))
-         (sexpr `(par ,(IC_Y fn-name 'outy)))
+         (y-form (ICNU_Y fn-name 'outy))
+         (sexpr (cons 'par (cddr y-form)))
          (net (parse-net sexpr))
          (reduced (reduce-net-to-normal-form net '((max-iter . 50)))))
-    (assert-true (node-agent reduced 'outy) "IC_Y created out node")
+    (assert-true (node-agent reduced 'outy) "ICNU_Y created out node")
     #t))
 
 (define (copier-name i) (string->symbol (format-string #f "c~a" i)))
@@ -159,7 +168,7 @@
   (if (not (*long-tests-enabled*))
       (begin (format-string #t "skipping long test: heavy church-apply ") #t)
       (let* ((n 30)
-             (sexpr (read (open-input-string (format-string #f "~a" (IC_CHURCH-APPLY n 'f 'x 'outc))))))
+             (sexpr (flatten-ic-forms (ICNU_CHURCH-APPLY n 'f 'x 'outc))))
         (let ((net (parse-net sexpr)))
           (let ((reduced (reduce-net-to-normal-form net '((max-iter . 2000)))))
             (assert-true (node-agent reduced 'outc) "outc node exists after heavy reduction")
@@ -204,10 +213,10 @@
     (assert-eq out2 "x1" "format-string #t prints to current-output-port"))
   #t)
 
-(define (test-IC_COPY-self-name)
-  (let ((sexpr (IC_COPY 'x 'x)))
+(define (test-ICNU_COPY-self-name)
+  (let ((sexpr (ICNU_COPY 'x 'x)))
     (let ((net (parse-net sexpr)))
-      (assert-true (node-agent net 'x) "IC_COPY created or preserved node x")
+      (assert-true (node-agent net 'x) "ICNU_COPY created or preserved node x")
       #t)))
 
 (define (test-validate-ir-bad-link-format)
@@ -218,7 +227,7 @@
     #t))
 
 (define (test-resolve-literal-trigger-style)
-  (let* ((sexpr (IC_LITERAL 7 'trig-out))
+  (let* ((sexpr (ICNU_LITERAL 7 'trig-out))
          (net (parse-net sexpr)))
     (let ((val (eval-net net '((out-name . trig-out)))))
       (assert-true (or (equal? val 7) (equal? val 'num-7)) "trigger-style literal resolves to 7"))
@@ -263,13 +272,13 @@
             test-resolve-literal-deep-chain
             test-resolve-literal-cycle_detection
             test-reduce-unlimited-equivalence
-            test-IC_Y_small_finite
+            test-ICNU_Y_small_finite
             test-complex-copier-tree-stability
             test-long-church-apply_heavy
             test-parse-net-restores-link-mode
             test-reduce-respects-max-iter
             test-format-string-accepts-port
-            test-IC_COPY-self-name
+            test-ICNU_COPY-self-name
             test-validate-ir-bad-link-format
             test-resolve-literal-trigger-style
             test-validate-ir-valid

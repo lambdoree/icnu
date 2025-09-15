@@ -5,36 +5,19 @@
   #:use-module (icnu utils internal)
   #:use-module ((icnu literals) #:prefix lit:)
   #:export (
-            ;; S-expression constructors
             mk-node-labeled
-            
-            ;; Net lifecycle and inspection
             parse-net pretty-print empty-net copy-net
             all-names all-nodes-with-agent find-active-pairs
-            
-            ;; Node and link properties and manipulation
             add-node! delete-node! rewire! link-peers! unlink-port!
             node-agent get-ports valid-port? endpoint peer
             net-nodes net-links net-tags net-meta
-
-            ;; Node metadata (tags, etc.)
             set-node-tag! node-tag set-node-meta! node-meta
             ic-meta-get ic-meta-set! ic-literal? ic-literal-value ic-make-literal-node!
-            
-            ;; nu-specific operations
             node-nu? mark-nu! unmark-nu! inherit-nu!
-
-            ;; Fresh name generation
             make-fresh-name
-            
-            ;; Link conflict handling
             set-link-conflict-mode! *link-conflict-mode*
             mark-temporary! unmark-temporary! temporary-endpoint?
-            
-            ;; Record type and predicates
             <net> net?
-
-            ;; Utility
             plist-put plist-remove pp-bool
             ))
 
@@ -150,11 +133,6 @@
 
 (define (parse-net sexpr . maybe-use-nu)
   (let ((use-nu? (if (null? maybe-use-nu) #t (car maybe-use-nu))))
-    ;; Accept either a single top-level form like (par ...) or a bare list
-    ;; of forms (e.g. (node ...) (node ...) ...) produced by some helpers.
-    ;; If the provided sexpr looks like a bare sequence of forms (its car is
-    ;; itself a list), wrap it in a top-level (par ...) so the existing
-    ;; parser can consume it uniformly.
     (let ((wrapped-sexpr (if (and (pair? sexpr) (not (symbol? (car sexpr))))
                               `(par ,@sexpr)
                               sexpr)))

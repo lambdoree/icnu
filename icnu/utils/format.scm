@@ -1,9 +1,6 @@
 (define-module (icnu utils format)
   #:export (format-string))
 
-;; A robust simple formatter that returns the generated string reliably.
-;; Implemented without relying on call-with-output-string's return-value
-;; semantics so it behaves consistently across Scheme implementations.
 (define (simple-format fmt . args)
   (let ((out (open-output-string)))
     (let loop ((chars (string->list fmt)) (current-args args))

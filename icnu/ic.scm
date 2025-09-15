@@ -117,7 +117,7 @@
 (define *link-conflict-mode* (make-parameter 'error))
 
 (define (set-link-conflict-mode! v)
-  (if (memq v ' (error inject-temporary replace-exact))
+  (if (memq v '(error inject-temporary replace-exact))
       (*link-conflict-mode* v)
       (error "set-link-conflict-mode!: invalid mode" v)))
 

@@ -2,7 +2,6 @@
   #:use-module (icnu icnu)
   #:use-module (icnu utils format)
   #:use-module (icnu utils strings)
-  #:use-module (icnu tools icnu-proof)
   #:export (net-summary-string dump-links print-step-sequence time-thunk))
 
 (define (time-thunk thunk)
