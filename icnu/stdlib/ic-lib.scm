@@ -9,7 +9,7 @@
 		              JOIN-REPLACE JOIN-MAX
 		              IC_AND IC_OR IC_COPY
                   IC_TRUE IC_FALSE
-		              IC_PRIM_ADD IC_PRIM_SUB IC_PRIM_ADD_RUNTIME IC_APPLY
+		              IC_PRIM_ADD IC_PRIM_SUB IC_PRIM_SUM1 IC_PRIM_ADD_RUNTIME IC_APPLY
                   IC_CHURCH-APPLY IC_CONS IC_NIL IC_FIRST IC_REST IC_FOLD
 			            IC_PURE_ID IC_PURE_PAIR IC_PURE_FST IC_PURE_SND IC_PURE_LEFT IC_PURE_RIGHT
 			            IC_PURE_EITHER
@@ -45,7 +45,7 @@
       (wire (,comp p) (,out p)))))
 
 (define (IC_APPLY f-port x-port out)
-  (let* ((out-node (if (symbol? out) out out))
+  (let* ((out-node out)
          (c-f (icnu-gensym "app-f-"))
          (c-x (icnu-gensym "app-x-")))
     `((node ,out-node A user/apply-out)
@@ -106,26 +106,8 @@
     `((node ,add-impl A prim/add)
       (node ,c1 C)
       (node ,c2 C)
-      ,(let ((a in1) (dst c1))
-         (cond
-          ((symbol? a)
-           `(wire (,a p) (,dst p)))
-          ((and (list? a) (= (length a) 2) (eq? (cadr a) 'l))
-           `(wire (,(car a) l) (,dst p)))
-          ((and (list? a) (= (length a) 2) (eq? (cadr a) 'p))
-           `(wire (,(car a) p) (,dst p)))
-          (else
-           `(wire ,a (,dst p)))))
-      ,(let ((b in2) (dst c2))
-         (cond
-          ((symbol? b)
-           `(wire (,b p) (,dst p)))
-          ((and (list? b) (= (length b) 2) (eq? (cadr b) 'l))
-           `(wire (,(car b) l) (,dst p)))
-          ((and (list? b) (= (length b) 2) (eq? (cadr b) 'p))
-           `(wire (,(car b) p) (,dst p)))
-          (else
-           `(wire ,b (,dst p)))))
+      ,(wire-or-list in1 c1)
+      ,(wire-or-list in2 c2)
       (wire (,c1 l) (,add-impl l))
       (wire (,c2 l) (,add-impl r))
       (node ,out-c C)
@@ -139,30 +121,24 @@
     `((node ,sub-impl A prim/sub)
       (node ,c1 C)
       (node ,c2 C)
-      ,(let ((a in1) (dst c1))
-         (cond
-          ((symbol? a)
-           `(wire (,a p) (,dst p)))
-          ((and (list? a) (= (length a) 2) (eq? (cadr a) 'l))
-           `(wire (,(car a) l) (,dst p)))
-          ((and (list? a) (= (length a) 2) (eq? (cadr a) 'p))
-           `(wire (,(car a) p) (,dst p)))
-          (else
-           `(wire ,a (,dst p)))))
-      ,(let ((b in2) (dst c2))
-         (cond
-          ((symbol? b)
-           `(wire (,b p) (,dst p)))
-          ((and (list? b) (= (length b) 2) (eq? (cadr b) 'l))
-           `(wire (,(car b) l) (,dst p)))
-          ((and (list? b) (= (length b) 2) (eq? (cadr b) 'p))
-           `(wire (,(car b) p) (,dst p)))
-          (else
-           `(wire ,b (,dst p)))))
+      ,(wire-or-list in1 c1)
+      ,(wire-or-list in2 c2)
       (wire (,c1 l) (,sub-impl l))
       (wire (,c2 l) (,sub-impl r))
       (node ,out-c C)
       (wire (,sub-impl p) (,out-c p))
+      (wire (,out-c l) (,out p)))))
+
+(define (IC_PRIM_SUM1 in out)
+  (let ((sum-impl (icnu-gensym "sum-"))
+        (c1 (icnu-gensym "c-"))
+        (out-c (icnu-gensym "out-copy-")))
+    `((node ,sum-impl A prim/sum1)
+      (node ,c1 C)
+      ,(wire-or-list in c1)
+      (wire (,c1 l) (,sum-impl l))
+      (node ,out-c C)
+      (wire (,sum-impl p) (,out-c p))
       (wire (,out-c l) (,out p)))))
 
 (define (IC_TRUE b)

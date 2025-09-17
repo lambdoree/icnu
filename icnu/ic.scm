@@ -89,7 +89,7 @@
   (hash-set! (net-tags n) name tag))
 
 (define (set-node-meta! n name val)
-  (let ((store (if (eq? val #f) (cons 'value val) val)))
+  (let ((store (if (eq? val #f) (list (cons 'value val)) val)))
     (hash-set! (net-meta n) name store)))
 
 (define (node-tag n name)

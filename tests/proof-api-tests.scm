@@ -44,7 +44,7 @@
     #t))
 
 (define (test-church-small-vs-big)
-  (let* ((sexpr (IC_CHURCH-APPLY 3 'f 'x 'outc))
+  (let* ((sexpr (ICNU_CHURCH-APPLY 3 'f 'x 'outc))
          (net (parse-net sexpr))
          (reduced (big-step-net (copy-net net) '((max-iter . 200)))))
     (assert-true (node-agent reduced 'outc) "big-step result has outc node")

@@ -59,5 +59,5 @@
       (cond
         ((null? args) (vector-ref box 0))
         ((= (length args) 1) (let ((v (car args))) (vector-set! box 0 v) v))
-        (else (error "icnu-parameter: invalid arity" args))))))
+        (else (error "icnu-make-parameter: invalid arity" args))))))
 

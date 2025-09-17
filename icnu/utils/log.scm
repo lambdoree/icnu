@@ -16,9 +16,9 @@
       (set-debug-level! v)))
 
 (define (debugf level fmt . args)
-  (when (>= (debug-level?) level)
-    (apply format-string (cons (current-output-port) (cons fmt args)))
-    (force-output (current-output-port))))
+  (if (>= (debug-level?) level)
+      (apply format-string (cons (current-output-port) (cons fmt args)))
+      #t))
 
 (define (warnf fmt . args)
   (apply debugf (cons 1 (cons fmt args))))
@@ -26,13 +26,15 @@
 (define *debug-counts* (icnu-make-hash-table))
 
 (define (debugf-limited key limit level fmt . args)
-  (when (>= (debug-level?) level)
-    (let ((kstr (if (symbol? key) (symbol->string key) (format-string #f "~a" key))))
-      (let ((cnt (icnu-hash-ref *debug-counts* kstr 0)))
-        (when (< cnt limit)
-          (icnu-hash-set! *debug-counts* kstr (+ cnt 1))
-          (apply format-string (cons (current-output-port) (cons fmt args)))
-          (force-output (current-output-port)))))))
+  (if (>= (debug-level?) level)
+      (let ((kstr (if (symbol? key) (symbol->string key) (format-string #f "~a" key))))
+        (let ((cnt (icnu-hash-ref *debug-counts* kstr 0)))
+          (if (< cnt limit)
+              (begin
+                (icnu-hash-set! *debug-counts* kstr (+ cnt 1))
+                (apply format-string (cons (current-output-port) (cons fmt args))))
+              #t)))
+      #t))
 
 (define (debug-once key level fmt . args)
   (apply debugf-limited (cons key (cons 1 (cons level (cons fmt args))))))

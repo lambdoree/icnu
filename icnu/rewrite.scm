@@ -126,8 +126,7 @@
   (get-literal-value net n))
 
 (define (resolve-from-A-node net n current-port k seen recur)
-  (let* ((s (symbol->string n))
-         (tag (node-tag net n)))
+  (let* ((tag (node-tag net n)))
     (if (memq tag '(prim/eq prim/lt prim/gt prim/add prim/if))
         *unresolved*
         (call-with-values
@@ -169,26 +168,11 @@
 (define (rl-compute-limit maybe-limit)
   (if (null? maybe-limit) *resolve-literal-limit* (car maybe-limit)))
 
-(define (rl-initial-queue ep limit)
-  (list (cons ep limit)))
 
-(define (rl-skip-item? current-ep k)
-  (or (not current-ep) (<= k 0)))
 
-(define (rl-seen? seen key) (hash-ref seen key #f))
-(define (rl-mark-seen! seen key) (hash-set! seen key #t))
 
-(define (rl-enqueue q ep k)
-  (if ep (append q (list (cons ep (- k 1)))) q))
 
-(define (rl-handle-literal-node net n)
-  (resolve-from-literal-node net n))
 
-(define (rl-handle-A-input net current-ep k rest loop)
-  (let ((peer-ep (peer net current-ep)))
-    (if peer-ep
-        (loop (cons (cons peer-ep (- k 1)) rest))
-        (loop rest))))
 
 (define (resolve-literal-ep* net ep k seen)
   (letrec ((recur
@@ -328,28 +312,38 @@
 	  (for-each
 	   (lambda (n)
 	     (let ((tag (node-tag net n)))
-		     (when (memq tag '(prim/eq prim/lt prim/gt prim/add))
+		     (when (memq tag '(prim/eq prim/lt prim/gt prim/add prim/sum1))
 		       (let* ((l-ep (peer net (cons n 'l)))
 				          (r-ep (peer net (cons n 'r)))
 				          (l-val (if l-ep (resolve-literal-ep net l-ep *resolve-literal-limit*) *unresolved*))
 				          (r-val (if r-ep (resolve-literal-ep net r-ep *resolve-literal-limit*) *unresolved*)))
-			       (when (and (not (eq? l-val *unresolved*)) (not (eq? r-val *unresolved*)))
-			         (let ((res
-					            (case tag
-						            ((prim/lt) (and (number? l-val) (number? r-val) (< l-val r-val)))
-						            ((prim/gt) (and (number? l-val) (number? r-val) (> l-val r-val)))
-						            ((prim/eq) (equal? l-val r-val))
-						            ((prim/add) (and (number? l-val) (number? r-val) (+ l-val r-val)))
-						            (else #f))))
-				         (when (or (boolean? res) (number? res))
-				           (let ((lit (if (boolean? res)
-								                  (ensure-global-bool-node net res)
-								                  (ensure-global-num-node net res)))
-						             (out-ep (peer net (cons n 'p))))
-					           (when out-ep (rewire! net out-ep (cons lit 'p)))
-					           (delete-node! net n)
-					           (set! changed? #t)
-					           (debugf 1 "rewrite-pass-const-fold!: folded ~a -> ~a\n" n res)))))))))
+             (let ((res
+                    (cond
+                     ((eq? tag 'prim/lt)
+                      (if (and (number? l-val) (number? r-val)) (< l-val r-val) *unresolved*))
+                     ((eq? tag 'prim/gt)
+                      (if (and (number? l-val) (number? r-val)) (> l-val r-val) *unresolved*))
+                     ((eq? tag 'prim/eq)
+                      (if (and (not (eq? l-val *unresolved*)) (not (eq? r-val *unresolved*)))
+                          (equal? l-val r-val)
+                          *unresolved*))
+                     ((eq? tag 'prim/add)
+                      (if (and (number? l-val) (number? r-val)) (+ l-val r-val) *unresolved*))
+                     ((eq? tag 'prim/sum1)
+                      (if (number? l-val)
+                          (let* ((n l-val))
+                            (if (<= n 0) 0 (/ (* n (+ n 1)) 2)))
+                          *unresolved*))
+                     (else *unresolved*))))
+               (when (or (boolean? res) (number? res))
+                 (let ((lit (if (boolean? res)
+                                (ensure-global-bool-node net res)
+                                (ensure-global-num-node net res)))
+                       (out-ep (peer net (cons n 'p))))
+                   (when out-ep (rewire! net out-ep (cons lit 'p)))
+                   (delete-node! net n)
+                   (set! changed? #t)
+                   (debugf 1 "rewrite-pass-const-fold!: folded ~a -> ~a\n" n res))))))))
 	   (all-nodes-with-agent net 'A))
 	  changed?))
 

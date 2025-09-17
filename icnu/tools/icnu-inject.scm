@@ -7,7 +7,7 @@
 
 (define (generate-injection-form initial-values)
   (let ((acc '()))
-    (letrec* ((emit-list
+    (letrec ((emit-list
                (lambda (lst)
                  (if (null? lst)
                      (let ((n (icnu-gensym "inj-nil-")))

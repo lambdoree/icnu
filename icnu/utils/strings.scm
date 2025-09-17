@@ -26,7 +26,7 @@
              (start 0)
              (acc '()))
     (if (>= i (string-length s))
-        (reverse (cons (substring s start) acc))
+        (reverse (cons (substring s start (string-length s)) acc))
         (if (char=? (string-ref s i) delim-char)
             (loop (+ i 1)
                   (+ i 1)

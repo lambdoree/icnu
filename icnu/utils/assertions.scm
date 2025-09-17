@@ -2,15 +2,17 @@
   #:export (assert-eq assert-true assert-false))
 
 (define (assert-eq a b msg)
-  (unless (equal? a b)
-    (error "assert-eq failed:" msg a b))
-  #t)
+  (if (equal? a b)
+      #t
+      (error "assert-eq failed:" msg a b)))
 
 (define (assert-true v msg)
-  (unless v (error "assert-true failed:" msg))
-  #t)
+  (if v
+      #t
+      (error "assert-true failed:" msg)))
 
 (define (assert-false v msg)
-  (when v (error "assert-false failed:" msg))
-  #t)
+  (if v
+      (error "assert-false failed:" msg)
+      #t))
 

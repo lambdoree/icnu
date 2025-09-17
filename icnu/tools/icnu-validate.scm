@@ -41,6 +41,14 @@
              (b-port (cdr peer))
              (a-agent (and (symbol? a-name) (node-agent net a-name)))
              (b-agent (and (symbol? b-name) (node-agent net b-name))))
+        (unless (symbol? a-name)
+          (set! errs (cons `(invalid-endpoint-name ,port) errs)))
+        (unless (symbol? b-name)
+          (set! errs (cons `(invalid-endpoint-name ,peer) errs)))
+        (unless a-agent
+          (set! errs (cons `(unknown-node ,a-name) errs)))
+        (unless b-agent
+          (set! errs (cons `(unknown-node ,b-name) errs)))
         (when (and a-agent (not (vi:agent-allows-port? a-agent a-port)))
           (set! errs (cons `(invalid-port-for-agent ,port ,a-agent) errs)))
         (when (and b-agent (not (vi:agent-allows-port? b-agent b-port)))

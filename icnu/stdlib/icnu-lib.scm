@@ -10,7 +10,7 @@
 		                ICNU_JOIN-REPLACE ICNU_JOIN-MAX
 		                ICNU_LITERAL ICNU_EQ_CONST ICNU_LT_CONST ICNU_GT_CONST
 		                ICNU_AND ICNU_OR ICNU_NOT ICNU_COPY
-		                ICNU_PRIM_ADD ICNU_PRIM_SUB ICNU_PRIM_ADD_RUNTIME ICNU_APPLY
+		                ICNU_PRIM_ADD ICNU_PRIM_SUB ICNU_PRIM_SUM1 ICNU_PRIM_ADD_RUNTIME ICNU_APPLY
 		                ICNU_MK_TRUE ICNU_MK_FALSE
                     ICNU_CHURCH-APPLY ICNU_CONS ICNU_NIL ICNU_FIRST ICNU_REST ICNU_FOLD
 			              ICNU_PURE_ID ICNU_PURE_PAIR ICNU_PURE_FST ICNU_PURE_SND ICNU_PURE_LEFT ICNU_PURE_RIGHT
@@ -47,7 +47,7 @@
    ((pair? val)
     `(par (node ,out A lit/pair ',val)))
    (else
-    (error "IC_LITERAL: unsupported literal type" val))))
+    (error "ICNU_LITERAL: unsupported literal type" val))))
 
 (define (ICNU_APPLY f-port x-port out)
   `(par ,@(IC_APPLY f-port x-port out)))
@@ -97,6 +97,9 @@
 (define (ICNU_PRIM_SUB in1 in2 out)
   `(par ,@(IC_PRIM_SUB in1 in2 out)))
 
+(define (ICNU_PRIM_SUM1 in out)
+  `(par ,@(IC_PRIM_SUM1 in out)))
+
 (define (ICNU_MK_TRUE b)
   `(par (node ,b A lit/bool #t)))
 
@@ -104,7 +107,7 @@
   `(par (node ,b A lit/bool #f)))
 
 (define (ICNU_Y fn out)
-  `(par ,@(IC_Y fn out)))
+  (IC_Y fn out))
 
 
 (define (church-zero-net x-port out-target)
@@ -167,7 +170,7 @@
 (define (assemble-church-net apps copier-net app-forms LWs CWs lastW out-target outW)
   `(nu ,apps
        (par
-        ,@(if copier-net copier-net '())
+        ,(if copier-net copier-net '())
         ,@app-forms
         ,@LWs
         ,@CWs

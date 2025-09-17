@@ -152,7 +152,7 @@
                  (node a2 A) (node e E) (wire (a2 p) (e p))
                  (node c3 C) (node e3 E) (wire (c3 p) (e3 p))
                  (node a3 A) (node b3 A) (wire (a3 p) (b3 p))
-                 (node lt A 'prim/lt) (node num-2 A 'lit/num) (node num-3 A 'lit/num)
+                 (node lt A 'prim/lt) (node num-2 A 'lit/num 2) (node num-3 A 'lit/num 3)
                  (wire (num-2 p) (lt l)) (wire (num-3 p) (lt r)) (wire (lt p) (out p))
                  (node if-impl A 'prim/if) (node cond-copy C) (node out-if A)
                  (node cond-lit A 'lit/bool #t)
@@ -256,8 +256,8 @@
   (let ((net (parse-net
               '(par
                 (node lt1 A 'prim/lt)
-                (node num-2 A 'lit/num)
-                (node num-3 A 'lit/num)
+                (node num-2 A 'lit/num 2)
+                (node num-3 A 'lit/num 3)
                 (node out A)
                 (wire (num-2 p) (lt1 l))
                 (wire (num-3 p) (lt1 r))

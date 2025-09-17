@@ -37,14 +37,16 @@
 		                     get-literal-value
 		                     *unresolved*
 
-		                     IC_TRUE IC_FALSE IC_IF IC_Y
-		                     JOIN-REPLACE JOIN-MAX
-                         IC_GENERIC_CONST_OP
-		                     IC_LITERAL IC_EQ_CONST IC_LT_CONST IC_GT_CONST
-		                     IC_AND IC_OR IC_NOT IC_COPY
-		                     IC_PRIM_ADD IC_PRIM_ADD_RUNTIME IC_APPLY
-		                     IC_MK_TRUE IC_MK_FALSE
-		                     IC_CHURCH-APPLY IC_CONS IC_NIL IC_FIRST IC_REST IC_FOLD
+		                     ICNU_TRUE ICNU_FALSE ICNU_IF ICNU_Y
+		                     ICNU_JOIN-REPLACE ICNU_JOIN-MAX
+                         ICNU_GENERIC_CONST_OP
+		                     ICNU_LITERAL ICNU_EQ_CONST ICNU_LT_CONST ICNU_GT_CONST
+		                     ICNU_AND ICNU_OR ICNU_NOT ICNU_COPY
+		                     ICNU_PRIM_ADD ICNU_PRIM_ADD_RUNTIME ICNU_APPLY
+		                     ICNU_MK_TRUE ICNU_MK_FALSE
+		                     ICNU_CHURCH-APPLY ICNU_CONS ICNU_NIL ICNU_FIRST ICNU_REST ICNU_FOLD
+		                     ICNU_PURE_ID ICNU_PURE_PAIR ICNU_PURE_FST ICNU_PURE_SND ICNU_PURE_LEFT ICNU_PURE_RIGHT
+		                     ICNU_PURE_EITHER
 
 		                     generate-injection-form
 

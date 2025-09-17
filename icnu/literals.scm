@@ -1,7 +1,5 @@
 (define-module (icnu literals)
   #:use-module ((icnu ic) #:prefix ic:)
-  #:use-module (icnu utils internal)
-  #:use-module (ice-9 match)
   #:export (ic-literal? ic-literal-value ic-make-literal-node!))
 
 (define (ic-literal? net name)
@@ -14,7 +12,7 @@
         (cond
          ((and (pair? meta) (eq? (car meta) 'quote))
           (cadr meta))
-         ((and (list? meta) (pair? meta) (pair? (car meta)))
+         ((list? meta)
           (let ((p (assq 'value meta)))
             (if p (cdr p) meta)))
          (else meta)))

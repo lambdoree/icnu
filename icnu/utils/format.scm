@@ -26,7 +26,7 @@
   (let ((str (apply simple-format fmt args)))
     (cond
      ((eq? destination #f) str)
-     ((eq? destination #t) (begin (display str) (force-output) str))
-     ((not (boolean? destination)) (begin (display str destination) (force-output) str))
-     (else (begin (display str) (force-output) str)))))
+     ((eq? destination #t) (begin (display str) str))
+     ((not (boolean? destination)) (begin (display str destination) str))
+     (else (begin (display str) str)))))
 

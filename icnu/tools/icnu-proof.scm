@@ -5,6 +5,7 @@
   #:use-module (icnu rewrite)
   #:use-module (icnu eval)
   #:use-module (icnu utils format)
+  #:use-module (icnu utils strings)
   #:use-module (icnu utils log)
   #:use-module (icnu tools icnu-mermaid)
   #:export (small-step-string big-step-string
@@ -81,11 +82,7 @@
   (let* ((max (if (null? maybe-max) 100 (car maybe-max)))
          (sexpr (read-sexpr-from-string s))
          (start-net (parse-net sexpr)))
-    (define (join-strings lst)
-      (let loop ((xs lst) (acc ""))
-        (if (null? xs) acc
-            (let ((s (car xs)))
-              (loop (cdr xs) (if (string=? acc "") s (string-append acc "," s)))))))
+    ;; use string-join-list from icnu.utils.strings
 
     (define (summarize-net net)
       (let ((cntA 0) (cntC 0) (cntE 0) (cntV 0) (a-names '()) (lits '()))
@@ -104,8 +101,8 @@
                                                                          (if (or (null? xs) (>= i n)) (reverse acc)
                                                                              (loop (+ i 1) (cdr xs) (cons (car xs) acc))))))))
                             (map symbol->string (take 6 lst)))))
-               (a-short-str (if (null? a-short) "" (join-strings a-short)))
-               (lits-str (join-strings (reverse lits))))
+               (a-short-str (if (null? a-short) "" (string-join-list a-short ",")))
+               (lits-str (string-join-list (reverse lits) ",")))
           (format-string #f "A:~a C:~a E:~a V:~a A-names:~a Lits:~a"
                          cntA cntC cntE cntV a-short-str lits-str))))
 
