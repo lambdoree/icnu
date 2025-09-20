@@ -17,13 +17,17 @@
           rewrite-pass-if-fold!
           rewrite-pass-AA-merge!
           rewrite-pass-AC!
+          rewrite-pass-inpack-direct-wire!
           rewrite-pass-AE!
           rewrite-pass-CE-annihilation!
           rewrite-pass-wire-cleanup!)))
 
 (define (ic-only-reduction-passes)
-  (list rewrite-pass-AA-merge!
+  (list rewrite-pass-const-fold!
+        rewrite-pass-if-fold!
+        rewrite-pass-AA-merge!
         rewrite-pass-AC!
+        rewrite-pass-inpack-direct-wire!
         rewrite-pass-AE!
         rewrite-pass-CE-annihilation!
         rewrite-pass-wire-cleanup!))

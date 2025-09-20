@@ -33,6 +33,7 @@
       (rewrite-pass-if-fold! net)
       (rewrite-pass-AA-merge! net)
       (rewrite-pass-AC! net)
+      (rewrite-pass-inpack-direct-wire! net)
       (rewrite-pass-AE! net)
       (rewrite-pass-CE-annihilation! net)
       (rewrite-pass-wire-cleanup! net)))

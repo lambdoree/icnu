@@ -184,10 +184,8 @@
               (passes2 (shuffle default-passes))
               (r1 (reduce-with-passes (copy-net net) passes1))
               (r2 (reduce-with-passes (copy-net net) passes2))
-              ;; Normal form까지 reduction
               (nf1 (reduce-with-passes r1 default-passes))
               (nf2 (reduce-with-passes r2 default-passes)))
-         ;; Church-Rosser property: 모든 reduction path는 같은 normal form으로 수렴
          (let ((obs1 (if (hash-ref (net-nodes nf1) 'out #f)
                         (eval-net (copy-net nf1) '((out-name . out)))
                         (net->canonical-form nf1)))

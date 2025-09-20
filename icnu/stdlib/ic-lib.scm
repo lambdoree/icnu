@@ -192,7 +192,7 @@
                             (R (go (list c 'r) nr))
                             (outs (append (car L) (car R)))
                             (netL (cdr L)) (netR (cdr R))
-                            (kids (icnu-filter (lambda (x) x) (list netL netR))))
+                            (kids (append (if netL netL '()) (if netR netR '()))))
                        (cons outs
                              `((node ,c C)
                                ,(wire-or-list in c)
