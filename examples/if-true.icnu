@@ -1,0 +1,19 @@
+(par
+  (node if1  A prim/if)
+  (node cond A lit/num 1)
+  (node then A lit/num 1)
+  (node else A lit/num 2)
+  (node cp   C)
+  (node ct   C)
+  (node ce   C)
+  (node out  A)
+
+  (wire (cond p) (cp p))
+  (wire (then p) (ct p))
+  (wire (else p) (ce p))
+
+  (wire (cp l) (if1 p))
+  (wire (ct l) (if1 l))
+  (wire (ce l) (if1 r))
+
+  (wire (cp r) (out p)))

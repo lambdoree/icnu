@@ -12,16 +12,15 @@
         res))))
 
 (define (net-summary-string net)
-  (let ((cntA 0) (cntC 0) (cntE 0) (cntV 0))
+  (let ((cntA 0) (cntC 0) (cntE 0))
     (hash-for-each
      (lambda (_ agent)
        (cond
         ((eq? agent 'A) (set! cntA (+ cntA 1)))
         ((eq? agent 'C) (set! cntC (+ cntC 1)))
-        ((eq? agent 'E) (set! cntE (+ cntE 1)))
-        ((eq? agent 'V) (set! cntV (+ cntV 1)))))
+        ((eq? agent 'E) (set! cntE (+ cntE 1)))))
      (net-nodes net))
-    (format-string #f "A:~a C:~a E:~a V:~a" cntA cntC cntE cntV)))
+    (format-string #f "A:~a C:~a E:~a" cntA cntC cntE)))
 
 (define (dump-links net)
   (let ((acc '()))

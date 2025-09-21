@@ -1,0 +1,24 @@
+(module
+  (import ic-lib icnu-lib unit)
+  (par
+    (call IC_UNIT add-one () () ret
+      (par
+        (node one A lit/num 1)
+        (call ICNU_PRIM_ADD (in-pack l) (one p) ret)))
+    ;; second unit removed to avoid unresolved chaining; we'll inline second +1
+    (node in A lit/num 20)
+    (node out-nil1 A ds/nil)
+    (node mid C)
+    (call IC_CALL_UNIT add-one (in p) out-nil1 mid)
+
+    ;; Inline the second increment: out = (mid + 1)
+    (node one3 A lit/num 1)
+    (node cx C)
+    (node cy C)
+    (node add A prim/add)
+    (wire (mid l) (cx p))
+    (wire (one3 p) (cy p))
+    (wire (cx l) (add l))
+    (wire (cy l) (add r))
+
+    ))

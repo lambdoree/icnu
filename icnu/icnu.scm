@@ -44,9 +44,13 @@
       (cadr x)
       x))
 
-(define (ensure-free-name-node! n name)
-  (unless (node-agent n name)
-    (add-node! n name 'V)))
+(define (normalize-agent ag)
+  (case ag
+    ((delta) 'A)
+    ((gamma) 'C)
+    ((epsilon) 'E)
+    (else ag)))
+
 
 (define (parse-endpoint n ep)
   (let* ((pair (match ep
@@ -63,7 +67,6 @@
                     (p (unquote-if-needed p-form)))
                 (unless (and (symbol? a) (valid-port? p))
                   (error "parse-endpoint: bad endpoint form" ep))
-                (ensure-free-name-node! n a)
                 (endpoint a p))
               (error "parse-endpoint: Malformed endpoint. Expected ('name 'port) or ('name . 'port)." ep))))))
 
@@ -104,7 +107,7 @@
      (let ((name (unquote-if-needed name-form))
            (agent (unquote-if-needed agent-form)))
        (when (and (symbol? name) (symbol? agent))
-         (add-node! n name agent)
+         (add-node! n name (normalize-agent agent))
          (when (pair? rest)
            (let ((tag (unquote-if-needed (car rest))))
              (set-node-tag! n name tag)
@@ -157,14 +160,7 @@
         body)))
 
 (define (delete-node! n x)
-  (if (node-nu? n x)
-      (let ((agent (node-agent n x)))
-        (when agent
-          (for-each (lambda (pt) (unlink-port! n (cons x pt))) (get-ports agent))
-          (hash-set! (ic:net-nodes n) x 'V)
-          (hash-set! (ic:net-tags n) x 'user/opaque))
-        n)
-      (ic:ic-delete-node! n x)))
+  (ic:ic-delete-node! n x))
 
 (define (mk-node-labeled name agent . rest)
   (let ((tag #f)

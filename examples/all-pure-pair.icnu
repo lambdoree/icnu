@@ -1,0 +1,18 @@
+(module
+  (import ic-lib icnu-lib unit)
+  (par
+    (node a A lit/num 7)
+    (node b A lit/num 8)
+    (call ICNU_PURE_PAIR (a p) (b p) pr)
+
+    (node fst C)
+    (node snd C)
+    (call ICNU_PURE_FST (pr p) fst)
+    (call ICNU_PURE_SND (pr p) snd)
+
+    (node add A prim/add)
+    (wire (fst l) (add l))
+    (wire (snd l) (add r))
+
+    (node out A)
+    (wire (add p) (out p))))

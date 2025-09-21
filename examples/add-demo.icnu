@@ -1,0 +1,14 @@
+(par
+  (node add A prim/add)
+  (node a   A lit/num 41)
+  (node b   A lit/num 1)
+  (node out A)
+
+  (node c1 C)
+  (node c2 C)
+
+  (wire (a p)   (c1 p))
+  (wire (b p)   (c2 p))
+  (wire (c1 l)  (add l))
+  (wire (c2 l)  (add r))
+  (wire (add p) (out p)))

@@ -38,16 +38,20 @@
 
 (define (ICNU_LITERAL val out)
   (cond
-   ((boolean? val)
-    `(par (node ,out A lit/bool ,val)))
+   ((char? val)
+    `(par (node ,out A lit/char ,val)))
+   ((and (number? val) (integer? val))
+    `(par (node ,out A lit/int ,val)))
+   ((and (number? val) (real? val))
+    `(par (node ,out A lit/real ,val)))
    ((number? val)
     `(par (node ,out A lit/num ,val)))
-   ((or (symbol? val) (string? val))
-    `(par (node ,out A lit/str ,(if (symbol? val) `',val val))))
-   ((pair? val)
-    `(par (node ,out A lit/pair ',val)))
+   ((string? val)
+    `(par (node ,out A lit/str ,val)))
+   ((symbol? val)
+    `(par (node ,out A lit/symbol ',val)))
    (else
-    (error "ICNU_LITERAL: unsupported literal type" val))))
+    (error "ICNU_LITERAL: unsupported literal type (bool/pair moved to pure IC)" val))))
 
 (define (ICNU_APPLY f-port x-port out)
   `(par ,@(IC_APPLY f-port x-port out)))
@@ -87,8 +91,8 @@
     `(nu (,true-node ,false-node)
          (par
           (node ,out-node A)
-          ,(ICNU_LITERAL #t true-node)
-          ,(ICNU_LITERAL #f false-node)
+          ,(ICNU_MK_TRUE true-node)
+          ,(ICNU_MK_FALSE false-node)
           ,(ICNU_IF in-port (list false-node 'r) (list true-node 'r) out-node)))))
 
 (define (ICNU_PRIM_ADD in1 in2 out)
@@ -101,82 +105,14 @@
   `(par ,@(IC_PRIM_SUM1 in out)))
 
 (define (ICNU_MK_TRUE b)
-  `(par (node ,b A lit/bool #t)))
+  `(par ,@(IC_TRUE b)))
 
 (define (ICNU_MK_FALSE b)
-  `(par (node ,b A lit/bool #f)))
+  `(par ,@(IC_FALSE b)))
 
 (define (ICNU_Y fn out)
   (IC_Y fn out))
 
-
-(define (church-zero-net x-port out-target)
-  (let ((from-ep (icnu-normalize-ep x-port 'p))
-        (to-ep   (icnu-normalize-ep out-target 'p)))
-    `(par ,@(if (symbol? out-target) `((node ,out-target A)) '())
-          (wire ,from-ep ,to-ep))))
-
-(define (build-copier-fanout input-ep k)
-  (letrec ((go (lambda (in k)
-                 (if (<= k 1)
-                     (cons (list in) #f)
-                     (let* ((c (icnu-gensym "copier-"))
-                            (nl (ceiling (/ k 2)))
-                            (nr (floor   (/ k 2)))
-                            (L (go (list c 'l) nl))
-                            (R (go (list c 'r) nr))
-                            (outs (append (car L) (car R)))
-                            (netL (cdr L)) (netR (cdr R))
-                            (kids (icnu-filter (lambda (x) x) (list netL netR))))
-                       (cons outs
-                             `(nu (,c)
-                                  (par
-                                   (node ,c C)
-                                   ,(wire-or-list in c)
-                                   ,@kids))))))))
-    (go input-ep k)))
-
-(define (make-apps n)
-  (icnu-gensyms "church-app-" n))
-
-(define (app-node-forms apps)
-  (map (lambda (nm) `(node ,nm A)) apps))
-
-(define (left-wires outputs apps)
-  (map (lambda (pair app)
-         (let ((src-name (car pair))
-               (src-port (cadr pair)))
-           `(wire (,src-name ,src-port) (,app l))))
-       outputs apps))
-
-(define (chain-wires apps)
-  (let loop ((xs apps) (acc '()))
-    (if (null? (cdr xs)) (reverse acc)
-        (let ((a (car xs)) (b (cadr xs)))
-          (loop (cdr xs) (cons `(wire (,a r) (,b p)) acc))))))
-
-(define (last-wire apps x-port)
-  (let ((last (car (reverse apps))))
-    (if (symbol? x-port)
-        `(wire (,last r) (,x-port p))
-        `(wire (,last r) ,x-port))))
-
-(define (out-wire apps out-target)
-  (let ((first (car apps)))
-    (if (symbol? out-target)
-        `(wire (,first p) (,out-target p))
-        `(wire (,first p) ,out-target))))
-
-(define (assemble-church-net apps copier-net app-forms LWs CWs lastW out-target outW)
-  `(nu ,apps
-       (par
-        ,(if copier-net copier-net '())
-        ,@app-forms
-        ,@LWs
-        ,@CWs
-        ,lastW
-        ,@(if (symbol? out-target) `((node ,out-target A user/output)) '())
-        ,outW)))
 
 (define (ICNU_CHURCH-APPLY n f-port x-port out-target)
   (IC_CHURCH-APPLY n f-port x-port out-target))

@@ -1,0 +1,33 @@
+(module
+  (import ic-lib icnu-lib unit)
+  (par
+
+    (node x A lit/num 3)
+    (node y A lit/num 1)
+
+    (call ICNU_PURE_PAIR (tx r) (ty r) args-pair)
+
+    (call ICNU_NIL out-nil)
+
+    ;; cond: x < y ?
+    (node lt A prim/lt)
+    (node cx2 C)
+    (node cy2 C)
+    (wire (x p) (cx2 p))
+    (wire (y p) (cy2 p))
+    (wire (cx2 l) (lt l))
+    (wire (cy2 l) (lt r))
+    (node tx C)
+    (node ty C)
+    (wire (cx2 r) (tx p))
+    (wire (cy2 r) (ty p))
+
+    (node cond-copy C)
+    (wire (lt p) (cond-copy p))
+    (node sorted-min A)
+    (call ICNU_IF (cond-copy l) (tx l) (ty l) sorted-min)
+
+    (node yfn A y-fn)
+    (node y-out A)
+    (call ICNU_Y (yfn p) y-out)
+  ))

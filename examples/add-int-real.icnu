@@ -1,0 +1,13 @@
+(par
+  (node add A prim/add)
+  (node x   A lit/real 1.5)
+  (node y   A lit/num 2)
+  (node cx  C)
+  (node cy  C)
+  (node out A)
+
+  (wire (x p) (cx p))
+  (wire (y p) (cy p))
+  (wire (cx l) (add l))
+  (wire (cy l) (add r))
+  (wire (add p) (out p)))

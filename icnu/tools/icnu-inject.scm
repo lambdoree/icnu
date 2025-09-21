@@ -29,7 +29,11 @@
               (make-val
                (lambda (v)
                  (cond
-                  ((or (boolean? v) (number? v) (symbol? v) (string? v))
+                  ((boolean? v)
+                   (let ((tmp (icnu-gensym "inj-bool-")))
+                     (set! acc (cons (if v (ICNU_MK_TRUE tmp) (ICNU_MK_FALSE tmp)) acc))
+                     tmp))
+                  ((or (number? v) (symbol? v) (string? v))
                    (let ((tmp (icnu-gensym "inj-lit-")))
                      (set! acc (cons (ICNU_LITERAL v tmp) acc))
                      tmp))
@@ -45,7 +49,11 @@
            (let ((id  (car pair))
                  (val (cdr pair)))
              (cond
-              ((or (boolean? val) (number? val) (symbol? val) (string? val))
+              ((boolean? val)
+               (let ((tmp (icnu-gensym (string-append "inj-bool-" (symbol->string id) "-"))))
+                 (set! acc (cons (if val (ICNU_MK_TRUE tmp) (ICNU_MK_FALSE tmp)) acc))
+                 (set! acc (cons `(wire (,tmp p) (,id r)) acc))))
+              ((or (number? val) (symbol? val) (string? val))
                (let ((tmp (icnu-gensym (string-append "inj-lit-" (symbol->string id) "-"))))
                  (set! acc (cons (ICNU_LITERAL val tmp) acc))
                  (set! acc (cons `(wire (,tmp p) (,id r)) acc))))

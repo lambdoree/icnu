@@ -4,7 +4,7 @@
   #:export (debug-level? set-debug-level! set-debug-log!
            debugf warnf debugf-limited debug-once))
 
-(define *debug-level* (icnu-make-parameter 1))
+(define *debug-level* (icnu-make-parameter 0))
 
 (define (debug-level?) (*debug-level*))
 

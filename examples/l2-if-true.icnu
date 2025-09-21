@@ -1,0 +1,8 @@
+(module
+  (import ic-lib icnu-lib unit)
+  (par
+    (node out  A)
+    (node cond A lit/num 1)
+    (node tval A lit/num 10)
+    (node eval A lit/num 20)
+    (call ICNU_IF (cond p) (tval p) (eval p) out)))

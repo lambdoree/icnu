@@ -1,0 +1,12 @@
+(module
+  (import ic-lib icnu-lib unit)
+  (par
+    (call IC_UNIT sum1 () () ret
+      (par
+        (call ICNU_PRIM_SUM1 (in-pack l) ret)))
+    (node in A lit/num 5)
+    (node out-nil A ds/nil)
+    (node result C)
+    (call IC_CALL_UNIT sum1 (in p) out-nil result)
+    (node out A)
+    (wire (result l) (out p))))

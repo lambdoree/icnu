@@ -1,18 +1,15 @@
 (define-module (icnu tools icnu-validate)
   #:use-module (icnu icnu)
-  #:use-module (icnu utils internal)
   #:export (validate-ir))
 
 
 
 (define (vi:valid-agent? ag)
-  (memq ag '(A C E V)))
+  (memq ag '(A C E)))
 
 (define (vi:agent-allows-port? agent port)
-  (if (eq? agent 'V)
-      #t
-      (let ((ports (get-ports agent)))
-        (and ports (memq port ports)))))
+  (let ((ports (get-ports agent)))
+    (and ports (memq port ports))))
 
 (define (vi:check-agents nodes)
   (let ((errs '()))

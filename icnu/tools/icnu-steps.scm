@@ -1,0 +1,30 @@
+(define-module (icnu tools icnu-steps)
+  #:use-module (ice-9 match)
+  #:use-module (icnu utils format)
+  #:use-module (icnu eval)
+  #:use-module (icnu tools icnu-proof)
+  #:export (main))
+
+(define (read-sexp-string path)
+  (call-with-input-file path
+    (lambda (port)
+      (let ((sexpr (read port)))
+        (format-string #f "~a" sexpr)))))
+
+(define (usage prog)
+  (format-string #t "Usage: ~a <file.icnu> [max-steps]\n" prog)
+  (format-string #t "  Example: ~a examples/add-demo.icnu 10\n" prog)
+  #f)
+
+(define (main args)
+  (match (cdr args)
+    ((file)
+     (let* ((src (read-sexp-string file)))
+       (run-steps-on-string src 50)))
+    ((file max)
+     (let* ((k (string->number max))
+            (src (read-sexp-string file)))
+       (run-steps-on-string src (if (number? k) k 50))))
+    (else (usage (car args)))))
+
+(main (program-arguments))

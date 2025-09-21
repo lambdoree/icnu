@@ -1,10 +1,20 @@
 (define-module (icnu literals)
   #:use-module ((icnu ic) #:prefix ic:)
-  #:export (ic-literal? ic-literal-value ic-make-literal-node!))
+  #:export (ic-literal? ic-literal-type ic-literal-value ic-make-literal-node!))
 
 (define (ic-literal? net name)
   (let ((tag (ic:node-tag net name)))
-    (memq tag '(lit/bool lit/num lit/str lit/pair))))
+    (memq tag '(lit/num lit/int lit/real lit/char lit/str lit/symbol))))
+
+(define (ic-literal-type net name)
+  (let ((tag (ic:node-tag net name)))
+    (cond
+     ((or (eq? tag 'lit/int) (eq? tag 'lit/num)) 'int)
+     ((eq? tag 'lit/real)   'real)
+     ((eq? tag 'lit/char)   'char)
+     ((eq? tag 'lit/str)    'str)
+     ((eq? tag 'lit/symbol) 'symbol)
+     (else 'unknown))))
 
 (define (ic-literal-value net name)
   (if (ic-literal? net name)

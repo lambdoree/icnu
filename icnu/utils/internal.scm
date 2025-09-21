@@ -24,9 +24,31 @@
         (else (icnu-filter pred (cdr lst)))))
 
 (define (icnu-map proc lst)
-  (if (null? lst)
-      '()
-      (cons (proc (car lst)) (icnu-map proc (cdr lst)))))
+  (let loop ((xs lst) (acc '()))
+    (if (null? xs)
+        (reverse acc)
+        (loop (cdr xs) (cons (proc (car xs)) acc)))))
+
+(define (icnu-match pat datum)
+  (cond
+   ((symbol? pat)
+    (let ((s (symbol->string pat)))
+      (if (and (> (string-length s) 0)
+               (char=? (string-ref s 0) #\?))
+          #t
+          (eq? pat datum))))
+   ((pair? pat)
+    (cond
+     ((eq? (car pat) 'quote)
+      (eq? (cadr pat) datum))
+     ((eq? (car pat) 'list)
+      (and (pair? datum)
+           (icnu-match (cdr pat) datum)))
+     (else
+      (and (pair? datum)
+           (icnu-match (car pat) (car datum))
+           (icnu-match (cdr pat) (cdr datum))))))
+   (else (equal? pat datum))))
 
 (define (icnu-fold proc init lst)
   (let loop ((l lst) (acc init))
@@ -46,24 +68,6 @@
     (and (<= suflen slen)
          (string=? suffix (substring str (- slen suflen) slen)))))
 
-(define (icnu-match pat datum)
-  (cond
-   ((symbol? pat)
-    (if (char=? (string-ref (symbol->string pat) 0) #\?)
-        #t
-        (eq? pat datum)))
-   ((pair? pat)
-    (cond
-     ((eq? (car pat) 'quote)
-      (eq? (cadr pat) datum))
-     ((eq? (car pat) 'list)
-      (and (pair? datum)
-           (icnu-match (cdr pat) datum)))
-     (else
-      (and (pair? datum)
-           (icnu-match (car pat) (car datum))
-           (icnu-match (cdr pat) (cdr datum))))))
-   (else (equal? pat datum))))
 
 (define (icnu-andmap p . lists)
   (define (any-null? ls)

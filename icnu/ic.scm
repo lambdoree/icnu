@@ -62,10 +62,17 @@
 
 (define (valid-port? p) (memq p '(p l r)))
 
+(define (normalize-agent ag)
+  (case ag
+    ((delta) 'A)
+    ((gamma) 'C)
+    ((epsilon) 'E)
+    (else ag)))
+
 (define (get-ports agent-type)
   (case agent-type
     ((A C) '(p l r))
-    ((E)   '(p))
+    ((E) '(p))
     (else '())))
 
 (define (ensure-node! n name agent)
@@ -74,13 +81,11 @@
     (cond
      ((not existing-agent)
       (hash-set! tbl name agent))
-     ((eq? existing-agent 'V)
-      (hash-set! tbl name agent))
      ((not (eq? existing-agent agent))
       (error "Node already exists with different agent" name agent existing-agent)))))
 
 (define (add-node! n name agent)
-  (when (not (memq agent '(A C E V)))
+  (when (not (memq agent '(A C E)))
     (error "Unknown agent" agent))
   (ensure-node! n name agent)
   n)
@@ -165,28 +170,12 @@
 (define (unlink-port! n a-port)
   (let* ((L (net-links n))
          (b-port (peer n a-port)))
-    (when b-port
-      (hash-remove! L b-port)
-      (let ((key-to-remove #f))
-        (hash-for-each (lambda (k v)
-                         (when (equal? k a-port)
-                           (set! key-to-remove k)))
-					             L)
-        (when key-to-remove
-          (hash-remove! L key-to-remove)))))
+    (when b-port (hash-remove! L b-port))
+    (hash-remove! L a-port))
   n)
 
 (define (peer n a-port)
-  (let ((direct (hash-ref (net-links n) a-port #f)))
-    (if direct
-        direct
-        (let ((found #f))
-          (hash-for-each
-           (lambda (k v)
-             (when (equal? k a-port)
-               (set! found v)))
-           (net-links n))
-          found))))
+  (hash-ref (net-links n) a-port #f))
 
 (define (rewire! n from to)
   (unless (and (pair? from) (pair? to))
@@ -274,8 +263,7 @@
       x))
 
 (define (ensure-free-name-node! n name)
-  (unless (node-agent n name)
-    (add-node! n name 'V)))
+  n)
 
 (define (parse-endpoint n ep)
   (let* ((pair (match ep
@@ -292,7 +280,6 @@
                     (p (unquote-if-needed p-form)))
                 (unless (and (symbol? a) (valid-port? p))
                   (error "parse: bad endpoint form" ep))
-                (ensure-free-name-node! n a)
                 (endpoint a p))
               (error "parse-endpoint: Malformed endpoint. Expected ('name 'port) or ('name . 'port)." ep))))))
 
@@ -333,7 +320,7 @@
      (let ((name (unquote-if-needed name-form))
            (agent (unquote-if-needed agent-form)))
        (when (and (symbol? name) (symbol? agent))
-         (add-node! n name agent)
+         (add-node! n name (normalize-agent agent))
          (when (pair? rest)
            (let ((tag (unquote-if-needed (car rest))))
              (set-node-tag! n name tag)
@@ -356,15 +343,14 @@
 
 (define (ic-pretty-print net . maybe-opts)
 	(let* ((opts (if (null? maybe-opts) '() (car maybe-opts)))
-         (showV (pp-bool opts 'show-V? #f))
+         
          (showNu (pp-bool opts 'show-nu? #f))
          (showTags (pp-bool opts 'show-tags? #f))
-         (showMeta (pp-bool opts 'show-meta? #t))
+         (showMeta (pp-bool opts 'show-meta? #f))
          (nodes (net-nodes net))
          (links (net-links net)))
     (define (visible-node? name)
-		  (let ((ag (hash-ref nodes name)))
-        (or (not (eq? ag 'V)) showV)))
+		  #t)
     (define (visible-endpoint? ep)
 		  (let ((nm (car ep)))
         (visible-node? nm)))
