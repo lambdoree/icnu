@@ -1,0 +1,13 @@
+(par
+  (components ("icnu/components/if.icnu" "icnu-"))
+
+  (node cond A lit/num 1)
+  (node tval A lit/num 10)
+  (node eval A lit/num 20)
+
+  (wire (cond p) (icnu-if-cond p))
+  (wire (tval p) (icnu-if-tval p))
+  (wire (eval p) (icnu-if-eval p))
+
+  (node out A)
+  (wire (icnu-if-out p) (out p)))

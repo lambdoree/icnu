@@ -1,0 +1,13 @@
+(par
+  ;; Inputs: a, b (C)
+  (node a C)
+  (node b C)
+
+  ;; Implementation: prim/eq
+  (node eq A prim/eq)
+  (wire (a l) (eq l))
+  (wire (b l) (eq r))
+
+  ;; Output: out (A)
+  (node out A)
+  (wire (eq p) (out l)))

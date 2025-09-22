@@ -1,0 +1,35 @@
+(par
+  (components ("icnu/components/add.icnu" "icnu-")
+              ("icnu/components/pure/unit.icnu" "pure-")
+              ("icnu/components/pure/ucall.icnu" "pure-"))
+
+  ;; 단순 유닛 정의: 입력에 1을 더해 반환
+  ;; - pure-unit-* 노드는 유닛 스켈레톤의 공개 포트
+  ;; - icnu-add-* 노드는 prim/add 컴포넌트 포트
+
+  ;; 유닛 본문: result = in-pack + 1
+  (node one A lit/num 1)
+  (wire (pure-unit-in-pack l) (icnu-add-a p))
+  (wire (one p)               (icnu-add-b p))
+
+  ;; 산출값을 유닛의 반환 포트로 전달하고, ret 트리거도 동시에 발생
+  (node ret-split C)
+  (wire (icnu-add-out p) (ret-split p))
+  (wire (ret-split l) (pure-ucall-result p))
+  (wire (ret-split r) (pure-unit-ret p))
+
+  ;; 유닛 호출 구성: 입력 값과 (사용하지 않는) out-pack 제공
+  (node in A lit/num 20)
+  (wire (in p) (pure-ucall-in-copy p))
+
+  (node out-pack A ds/nil)
+  (wire (out-pack p) (pure-ucall-out-snd p))
+
+  ;; 호출 타깃 유닛 연결: 호출자가 만든 프레임을 유닛의 frame으로 연결 (p<->p)
+  (wire (pure-ucall-frame p) (pure-unit-frame p))
+  ;; 유닛의 결과(l)를 호출 결과 수집 포트에 연결 (ret-split로 직접 전달)
+  ;; (wire (pure-unit l) (pure-ucall-result p))  ; 중복 연결 방지로 제거
+
+  ;; 호출 결과 노출
+  (node out A)
+  (wire (pure-ucall-result l) (out p)))

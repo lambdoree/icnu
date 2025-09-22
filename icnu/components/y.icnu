@@ -1,0 +1,20 @@
+(par
+  ;; Input: fn (C) — function to be fixed-pointed; Output: out (A)
+  (node fn C)
+
+  (node Y A y-comb)
+  (node Ydup C)
+  (node Yapp1 A y-comb)
+  (node Yapp2 A y-comb)
+  (node Yres A y-comb)
+
+  (wire (fn l) (Ydup p))
+  (wire (Ydup l) (Yapp1 p))
+  (wire (Ydup r) (Yapp2 p))
+  (wire (Yapp1 l) (Y l))
+  (wire (Yapp1 r) (Yapp2 l))
+  (wire (Yapp2 r) (Y r))
+  (wire (Y p) (Yres l))
+
+  (node out A)
+  (wire (Yres p) (out p)))

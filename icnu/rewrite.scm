@@ -10,7 +10,6 @@
             rewrite-pass-wire-cleanup!
             rewrite-pass-AA-merge!
             rewrite-pass-CE-annihilation!
-            rewrite-pass-inpack-direct-wire!
             resolve-literal-ep
             is-literal-node?
             get-literal-value
@@ -23,7 +22,6 @@
 (define rewrite-pass-wire-cleanup!    icr:rewrite-pass-wire-cleanup!)
 (define rewrite-pass-AA-merge!        icr:rewrite-pass-AA-merge!)
 (define rewrite-pass-CE-annihilation! icr:rewrite-pass-CE-annihilation!)
-(define rewrite-pass-inpack-direct-wire! icr:rewrite-pass-inpack-direct-wire!)
 
 (define resolve-literal-ep           icnur:resolve-literal-ep)
 (define rewrite-pass-if-fold!        icnur:rewrite-pass-if-fold!)

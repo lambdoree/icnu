@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>ICNU Steps Viewer</title>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+    window.mermaid = mermaid;
+    mermaid.initialize({ startOnLoad: false, securityLevel: "loose", theme: "default" });
+  </script>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:20px}
+    h1{margin:0 0 1rem 0}
+    .picker{margin: 0 0 16px 0}
+    .hint{color:#666;font-size:0.9em;margin:4px 0 16px}
+    .step{margin: 24px 0;}
+    .meta{color:#666;font-size:0.9em;margin:0 0 6px 0}
+    pre.mermaid{background:#fff;border:1px solid #ddd;border-radius:6px;padding:8px;overflow:auto}
+    .error{color:#b00;white-space:pre-wrap}
+  </style>
+</head>
+<body>
+  <h1>ICNU Steps Viewer</h1>
+  <div class="picker">
+    <input id="dir" type="file" webkitdirectory directory multiple />
+  </div>
+  <div class="hint">
+    출력 디렉터리(output/box-demo 등)를 선택하세요. 선택한 폴더 안의 step*.icnu들을 읽어 다이어그램으로 렌더링합니다.
+  </div>
+  <div id="steps"></div>
+
+  <script>
+    const $ = (sel, el=document) => el.querySelector(sel);
+
+    function sanitizeIdML(s) {
+      const sstr = typeof s === 'string' ? s : String(s);
+      let out = 'n';
+      for (const c of sstr) {
+        const ok = /[0-9A-Za-z_]/.test(c);
+        out += ok ? c : '_';
+      }
+      return out;
+    }
+
+    function escapeMlLabel(s) {
+      const raw = typeof s === 'string' ? s : String(s);
+      return raw
+        .replace(/\\/g, "\\\\")
+        .replace(/"/g, '\\"')
+        .replace(/\n/g, "\\n")
+        .replace(/\[/g, "_")
+        .replace(/\]/g, "_")
+        .replace(/\(/g, "_")
+        .replace(/\)/g, "_")
+        .replace(/\{/g, "_")
+        .replace(/\}/g, "_");
+    }
+
+    // Simple S-expression parser sufficient for step*.icnu
+    function tokenize(src) {
+      const tokens = [];
+      let i = 0;
+      const n = src.length;
+      while (i < n) {
+        const ch = src[i];
+        if (/\s/.test(ch)) { i++; continue; }
+        if (ch === ';') { // comment till end of line
+          while (i < n && src[i] !== '\n') i++;
+          continue;
+        }
+        if (ch === '(' || ch === ')') { tokens.push(ch); i++; continue; }
+        if (ch === '"') { // string
+          let j = i + 1, str = '';
+          while (j < n) {
+            const c = src[j];
+            if (c === '\\') {
+              const next = src[j+1];
+              if (next) { str += '\\' + next; j += 2; continue; }
+            }
+            if (c === '"') { j++; break; }
+            str += c; j++;
+          }
+          tokens.push('"' + str + '"');
+          i = j;
+          continue;
+        }
+        // symbol/number
+        let j = i;
+        while (j < n && !/\s|\(|\)/.test(src[j])) j++;
+        tokens.push(src.slice(i, j));
+        i = j;
+      }
+      return tokens;
+    }
+
+    function parse(tokens) {
+      let i = 0;
+      function parseOne() {
+        if (i >= tokens.length) throw new Error("unexpected EOF");
+        const t = tokens[i++];
+        if (t === '(') {
+          const lst = [];
+          while (i < tokens.length && tokens[i] !== ')') {
+            lst.push(parseOne());
+          }
+          if (tokens[i] !== ')') throw new Error("missing )");
+          i++; // skip ')'
+          return lst;
+        }
+        if (t === ')') throw new Error("unexpected )");
+        // atom
+        if (t.startsWith('"') && t.endsWith('"')) {
+          return JSON.parse(t.replace(/\\n/g, "\\n"));
+        }
+        // try number
+        if (/^[+-]?\d+(\.\d+)?$/.test(t)) {
+          const num = Number(t);
+          return Number.isNaN(num) ? t : num;
+        }
+        // symbol
+        return t;
+      }
+      const res = [];
+      while (i < tokens.length) res.push(parseOne());
+      return res.length === 1 ? res[0] : res;
+    }
+
+    function isList(x) { return Array.isArray(x); }
+    function symEq(x, s) { return typeof x === 'string' && x === s; }
+
+    function getPorts(agent) {
+      return (agent === 'A' || agent === 'C') ? ['p','l','r'] : (agent === 'E' ? ['p'] : []);
+    }
+
+    function nodeLabel(name, agent, tag, meta) {
+      const bits = [];
+      if (agent) bits.push(`A=${agent}`);
+      if (tag) bits.push(`T=${tag}`);
+      const suffix = bits.length ? ` · ${bits.join(" ")}` : "";
+      return `${name}${suffix}`;
+    }
+
+    function netFromSexpr(expr) {
+      // Expect (par ...)
+      const nodes = new Map(); // name -> {agent, tag, meta}
+      const wires = []; // [{a,pa,b,pb}]
+      function visit(x) {
+        if (!isList(x)) return;
+        if (x.length === 0) return;
+        if (symEq(x[0], 'par')) {
+          for (let k = 1; k < x.length; k++) visit(x[k]);
+          return;
+        }
+        if (symEq(x[0], 'node')) {
+          const name = x[1];
+          const agent = x[2];
+          const tag = x.length > 3 ? x[3] : undefined;
+          const meta = x.length > 4 ? x[4] : undefined;
+          if (typeof name === 'string' && typeof agent === 'string') {
+            nodes.set(name, { agent, tag, meta });
+          }
+          return;
+        }
+        if (symEq(x[0], 'wire')) {
+          // Expect (wire (a p) (b q)) form
+          function parseEP(ep) {
+            if (isList(ep) && ep.length === 2 && typeof ep[0] === 'string' && typeof ep[1] === 'string') {
+              return { n: ep[0], p: ep[1] };
+            }
+            // Support 4-arg compact: (wire a p b q)
+            return null;
+          }
+          if (x.length === 3) {
+            const e1 = parseEP(x[1]);
+            const e2 = parseEP(x[2]);
+            if (e1 && e2) wires.push({ a: e1.n, pa: e1.p, b: e2.n, pb: e2.p });
+          } else if (x.length === 5 && typeof x[1] === 'string') {
+            wires.push({ a: x[1], pa: String(x[2]), b: x[3], pb: String(x[4]) });
+          }
+          return;
+        }
+        // nested
+        for (const it of x) visit(it);
+      }
+      visit(expr);
+      return { nodes, wires };
+    }
+
+    function netToMermaid(net) {
+      const lines = [];
+      const emit = (...args) => {
+        const fmt = args[0];
+        const s = fmt.replace(/~a/g, () => String(args.splice(1,1)[0]));
+        lines.push(s);
+      };
+      emit("flowchart LR");
+
+      // 간결한 노드: 포트 서브그래프 제거, 에이전트별 모양만 유지
+      for (const [name, info] of net.nodes.entries()) {
+        const id = sanitizeIdML(name);
+        const lbl = escapeMlLabel(nodeLabel(name, info.agent, info.tag, undefined));
+        const color = info.agent === 'A' ? '#f9f' : (info.agent === 'C' ? '#9ff' : '#ff9');
+        const shape = info.agent === 'A' ? `${id}[${lbl}]`
+                     : info.agent === 'C' ? `${id}(${lbl})`
+                     : info.agent === 'E' ? `${id}{${lbl}}`
+                     : `${id}[${lbl}]`;
+        emit("  ~a", shape);
+        emit("  style ~a fill:~a,stroke:#333,stroke-width:2px", id, color);
+      }
+
+      // 간결한 엣지: 포트 노드 대신 라벨로 포트 표기
+      const seen = new Set();
+      for (const w of net.wires) {
+        const a = sanitizeIdML(w.a), b = sanitizeIdML(w.b);
+        const ka = `${w.a}|${w.pa}`, kb = `${w.b}|${w.pb}`;
+        const key = ka < kb ? `${ka}##${kb}` : `${kb}##${ka}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          const edgeLabel = `${w.pa}→${w.pb}`;
+          emit("  ~a -- \"~a\" --> ~a", a, edgeLabel, b);
+        }
+      }
+
+      return lines.join("\n") + "\n";
+    }
+
+    function stepIndexFromName(name) {
+      const m = name.match(/step(\d+)\.icnu$/);
+      return m ? parseInt(m[1], 10) : -1;
+    }
+
+    function isStepFile(file) {
+      const path = file.webkitRelativePath || file.name;
+      const base = path.split('/').pop();
+      return /^step\d+\.icnu$/.test(base);
+    }
+
+    function groupByDir(files) {
+      const map = new Map();
+      for (const f of files) {
+        const path = f.webkitRelativePath || f.name;
+        const dir = path.includes('/') ? path.split('/').slice(0, -1).join('/') : '.';
+        if (!map.has(dir)) map.set(dir, []);
+        map.get(dir).push(f);
+      }
+      return map;
+    }
+
+    function clear(el) { while (el.firstChild) el.removeChild(el.firstChild); }
+
+    async function renderSelectedDirectory(files) {
+      const stepsHost = $("#steps");
+      clear(stepsHost);
+
+      const onlySteps = Array.from(files).filter(isStepFile);
+      if (onlySteps.length === 0) {
+        stepsHost.textContent = "선택한 폴더에서 step*.icnu 파일을 찾지 못했습니다.";
+        return;
+      }
+
+      // If multiple dirs are picked, group them
+      const grouped = groupByDir(onlySteps);
+      for (const [dir, flist] of grouped.entries()) {
+        const h = document.createElement("h2");
+        h.textContent = `Directory: ${dir}`;
+        stepsHost.appendChild(h);
+
+        const sorted = flist.slice().sort((a,b) => {
+          return stepIndexFromName(a.name) - stepIndexFromName(b.name);
+        });
+
+        for (const f of sorted) {
+          const text = await f.text();
+          let expr, net, mmd;
+          try {
+            expr = parse(tokenize(text));
+            net = netFromSexpr(expr);
+            mmd = netToMermaid(net);
+          } catch (e) {
+            const div = document.createElement("div");
+            div.className = "error";
+            div.textContent = `파싱 오류: ${f.name}\n${e.stack || e}`;
+            stepsHost.appendChild(div);
+            continue;
+          }
+
+          const wrap = document.createElement("div");
+          wrap.className = "step";
+          const idx = stepIndexFromName(f.name);
+          wrap.innerHTML = `<h3>Step ${idx >= 0 ? idx : f.name}</h3><div class="meta">${f.name}</div>`;
+          const pre = document.createElement("pre");
+          pre.className = "mermaid";
+          pre.textContent = mmd;
+          wrap.appendChild(pre);
+          stepsHost.appendChild(wrap);
+        }
+      }
+
+      try {
+        await window.mermaid.run({ querySelector: ".mermaid" });
+      } catch (e) {
+        const div = document.createElement("div");
+        div.className = "error";
+        div.textContent = `Mermaid 렌더링 오류:\n${e.stack || e}`;
+        stepsHost.appendChild(div);
+      }
+    }
+
+    $("#dir").addEventListener("change", (ev) => {
+      const files = ev.target.files;
+      if (!files || files.length === 0) return;
+      renderSelectedDirectory(files);
+    });
+  </script>
+</body>
+</html>
+

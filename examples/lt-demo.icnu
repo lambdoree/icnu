@@ -1,0 +1,11 @@
+(par
+  (components ("icnu/components/lt.icnu" "icnu-"))
+
+  (node a A lit/num 2)
+  (node b A lit/num 3)
+
+  (wire (a p) (icnu-lt-a p))
+  (wire (b p) (icnu-lt-b p))
+
+  (node out A)
+  (wire (icnu-lt-out p) (out p)))

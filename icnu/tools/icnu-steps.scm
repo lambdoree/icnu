@@ -1,15 +1,33 @@
 (define-module (icnu tools icnu-steps)
   #:use-module (ice-9 match)
   #:use-module (icnu utils format)
+  #:use-module (icnu utils strings)
   #:use-module (icnu eval)
   #:use-module (icnu tools icnu-proof)
-  #:export (main))
+  #:export (main small-steps-output small-steps-output-with-limit big-step-output))
 
 (define (read-sexp-string path)
   (call-with-input-file path
     (lambda (port)
       (let ((sexpr (read port)))
         (format-string #f "~a" sexpr)))))
+
+;; consolidated helpers (moved here from icnu-small-steps and icnu-big-step)
+(define (small-steps-output src)
+  (small-steps-output-with-limit src 100))
+
+(define (small-steps-output-with-limit src max-steps)
+  (let ((seq (small-step-sequence-string src max-steps)))
+    (let loop ((lst seq) (i 1) (acc '()))
+      (if (null? lst)
+          (string-append (string-join-list (reverse acc) "\n")
+                         (if (null? acc) "" "\n"))
+          (let ((header (format-string #f ";; STEP ~a" i))
+                (body (car lst)))
+            (loop (cdr lst) (+ i 1) (cons body (cons header acc))))))))
+
+(define (big-step-output src)
+  (big-step-string src))
 
 (define (usage prog)
   (format-string #t "Usage: ~a <file.icnu> [max-steps]\n" prog)

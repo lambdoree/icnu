@@ -1,0 +1,18 @@
+(par
+  ;; Inputs: a, b (C)
+  (node a C)
+  (node b C)
+
+  ;; Output container: pair (C)
+  (node pair C)
+
+  ;; Internal structure for pairing
+  (node fst C)
+  (node snd C)
+  (node merge C)
+
+  (wire (a l) (fst p))
+  (wire (b l) (snd p))
+  (wire (fst r) (merge l))
+  (wire (snd r) (merge r))
+  (wire (merge p) (pair p)))

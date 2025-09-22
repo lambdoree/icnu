@@ -1,0 +1,13 @@
+(par
+  ;; Inputs: a, b (C)
+  (node a C)
+  (node b C)
+
+  ;; Implementation: prim/lt
+  (node lt A prim/lt)
+  (wire (a l) (lt l))
+  (wire (b l) (lt r))
+
+  ;; Output: out (A)
+  (node out A)
+  (wire (lt p) (out l)))

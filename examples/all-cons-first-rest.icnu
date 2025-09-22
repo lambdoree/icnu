@@ -1,9 +1,0 @@
-(module
-  (import ic-lib icnu-lib unit)
-  (par
-    (call ICNU_NIL xs)
-    (node one A lit/num 1)
-    (node xs1 A)
-    (call ICNU_CONS (one p) (xs p) xs1)
-
-    (call ICNU_FIRST xs1 out)))

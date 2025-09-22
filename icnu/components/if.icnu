@@ -1,0 +1,15 @@
+(par
+  ;; Inputs: cond, tval, eval (all C nodes; parent wires to their p ports)
+  (node cond C)
+  (node tval C)
+  (node eval C)
+
+  ;; Implementation: prim/if and output
+  (node if1 A prim/if)
+  (wire (cond l) (if1 p))
+  (wire (tval l) (if1 l))
+  (wire (eval l) (if1 r))
+
+  ;; Output: out (A). keep out.p free for external wiring; forward cond.r into out.l
+  (node out A)
+  (wire (cond r) (out l)))

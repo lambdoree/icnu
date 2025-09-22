@@ -1,0 +1,5 @@
+(par
+  ;; A boolean false as lit/num 0
+  (node val A lit/num 0)
+  (node out A)
+  (wire (val p) (out l)))

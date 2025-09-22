@@ -1,0 +1,42 @@
+(par
+  ;; Pure-ICNU box (no prim/literal)
+  ;; Inputs:
+  ;;   val (C)  - 초기 값 엔드포인트(A를 val.p에 물리면 내부로 전달됨)
+  ;; Outputs:
+  ;;   box (C)       - 현재 박스 핸들(구조 컨테이너)
+  ;;   get (C)       - 현재 값에 도달하는 엔드포인트
+  ;;   set (C)       - setter 포털: 새 값을 set.p에 물리면 set.r에 "새 박스" 핸들이 나타남
+  ;;   next-get (C)  - set을 통해 만들어진 새 박스의 getter 엔드포인트
+  (node val C)
+
+  (node box C)
+  (node get C)
+  (node set C)
+  (node next-get C)
+
+  ;; 현재 컨테이너(cur-*)
+  (node cur-fst C)
+  (node cur-snd C)
+  (node cur-merge C)
+  (node cur-fst-split C)
+  (node cur-snd-split C)
+  (wire (val l) (cur-fst p))
+  (wire (cur-fst r) (cur-fst-split p))
+  (wire (cur-fst-split l) (get l))
+  (wire (cur-fst-split r) (cur-merge l))
+  (wire (cur-snd r) (cur-snd-split p))
+  (wire (cur-snd-split r) (cur-merge r))
+  (wire (cur-merge p) (box l))
+
+  ;; set.l로부터 새 컨테이너(new-*)
+  (node new-fst C)
+  (node new-snd C)
+  (node new-merge C)
+  (node new-fst-split C)
+  (wire (set l) (new-fst p))
+  (wire (new-fst r) (new-fst-split p))
+  (wire (new-fst-split l) (next-get l))  ;; 새 박스의 getter 노출
+  (wire (new-fst-split r) (new-merge l))
+  (wire (new-snd r) (new-merge r))
+  (wire (new-merge p) (set r))     ;; set.r에 "새 박스" 핸들 방출
+)

@@ -1,0 +1,11 @@
+(par
+  ;; Input: in (C)
+  (node in C)
+
+  ;; Implementation: prim/sum1
+  (node op A prim/sum1)
+  (wire (in l) (op l))
+
+  ;; Output: out (A)
+  (node out A)
+  (wire (op p) (out l)))

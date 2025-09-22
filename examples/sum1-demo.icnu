@@ -1,0 +1,8 @@
+(par
+  (components ("icnu/components/sum1.icnu" "icnu-"))
+
+  (node n A lit/num 5)
+  (wire (n p) (icnu-sum1-in p))
+
+  (node out A)
+  (wire (icnu-sum1-out p) (out p)))

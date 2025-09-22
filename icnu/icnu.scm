@@ -5,7 +5,6 @@
   #:use-module (icnu utils internal)
   #:use-module ((icnu literals) #:prefix lit:)
   #:export (
-            mk-node-labeled
             parse-net pretty-print empty-net copy-net
             all-names all-nodes-with-agent find-active-pairs
             add-node! delete-node! rewire! link-peers! unlink-port!
@@ -126,7 +125,7 @@
      (if use-nu?
          (let ((names (unquote-if-needed names-form)))
            (unless (list? names) (error "parse: nu names must be a list" names-form))
-           (for-each (lambda (nm) (mark-nu! n nm)) names)
+           (for-each (lambda (nm) (begin (mark-nu! n nm) (ic:ic-meta-set! n nm 'nu-origin? #t))) names)
            (parse-1/nu n body use-nu?))
          (error "nu binder encountered, but nu-support is disabled" form)))
     (else (error "parse-1/nu: Unrecognized form." form))))
@@ -151,8 +150,12 @@
         (let ((nu-names '()))
           (hash-for-each
            (lambda (nm ag)
-             (when (node-nu? net nm)
-               (set! nu-names (cons nm nu-names))))
+             (let ((origin (ic:ic-meta-get net nm 'nu-origin?)))
+               (when (and origin
+                          (let ((s (symbol->string nm)))
+                            (and (not (icnu-string-prefix? "icnu-" s))
+                                 (not (icnu-string-prefix? "pure-" s)))))
+                 (set! nu-names (cons nm nu-names)))))
            (ic:net-nodes net))
           (if (null? nu-names)
               body
@@ -162,17 +165,6 @@
 (define (delete-node! n x)
   (ic:ic-delete-node! n x))
 
-(define (mk-node-labeled name agent . rest)
-  (let ((tag #f)
-        (desc #f))
-    (when (and (pair? rest) (not (null? rest)))
-      (set! tag (car rest))
-      (when (and (pair? (cdr rest)) (not (null? (cdr rest))))
-        (set! desc (cadr rest))))
-    `(node ,name ,agent ,@(cond ((and tag desc) (list tag desc))
-                                ((and tag (not (eq? tag #f))) (list tag))
-                                (desc (list 'user/opaque desc))
-                                (else '())))))
 (define empty-net ic:empty-net)
 (define copy-net ic:copy-net)
 (define all-names ic:all-names)

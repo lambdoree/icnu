@@ -12,7 +12,6 @@
             rewrite-pass-wire-cleanup!
             rewrite-pass-AA-merge!
             rewrite-pass-CE-annihilation!
-            rewrite-pass-inpack-direct-wire!
             is-literal-node?
             get-literal-value))
 
@@ -141,27 +140,6 @@
      pairs)
     changed?))
 
-(define (rewrite-pass-inpack-direct-wire! net)
-  (let ((changed? #f))
-    (for-each
-     (lambda (x)
-       (let ((xs (symbol->string x)))
-         (when (icnu-string-prefix? "in-pack-" xs)
-           (let* ((xp (cons x 'p))
-                  (pp (peer net xp)))
-             (when (and pp (eq? (cdr pp) 'l) (symbol? (car pp)))
-               (let* ((f (car pp))
-                      (fs (symbol->string f)))
-                 (when (icnu-string-suffix? "-pair-fst-c" fs)
-                   (let ((driver (peer net (cons f 'p))))
-                     (when (and driver
-                                (eq? (cdr driver) 'l)
-                                (symbol? (car driver))
-                                (eq? (node-agent net (car driver)) 'A))
-                       (rewire! net xp driver)
-                       (set! changed? #t))))))))))
-     (all-nodes-with-agent net 'C))
-    changed?))
 
 (define (rewrite-pass-wire-cleanup! net)
   (let ((changed? #f))

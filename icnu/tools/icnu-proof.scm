@@ -6,14 +6,11 @@
   #:use-module (icnu eval)
   #:use-module (icnu utils format)
   #:use-module (icnu utils strings)
-  #:use-module (icnu utils log)
   #:use-module (icnu utils compat)
-  #:use-module (icnu tools icnu-mermaid)
   #:export (small-step-string big-step-string
                               small-step-net big-step-net
                               small-step-sequence-string small-step-sequence-net
-                              run-steps-on-string
-                              run-steps-on-string->mermaid))
+                              run-steps-on-string))
 
 
 
@@ -30,8 +27,6 @@
     (*last-rule-applied* 'AA-merge) #t)
    ((rewrite-pass-AC! net)
     (*last-rule-applied* 'AC) #t)
-   ((rewrite-pass-inpack-direct-wire! net)
-    (*last-rule-applied* 'inpack-direct-wire) #t)
    ((rewrite-pass-AE! net)
     (*last-rule-applied* 'AE) #t)
    ((rewrite-pass-CE-annihilation! net)
@@ -124,26 +119,4 @@
                         (loop (+ i 1) next cur-str)))))))))
   #t)
 
-(define (run-steps-on-string->mermaid s . maybe-args)
-  (let* ((max (if (and (pair? maybe-args) (number? (car maybe-args)))
-                  (car maybe-args) 100))
-         (out-dir (if (and (pair? maybe-args) (pair? (cdr maybe-args)))
-                      (cadr maybe-args) "mermaid-output"))
-         (sexpr (read-sexpr-from-string s))
-         (start-net (parse-net sexpr))
-         (seq (small-step-sequence-net start-net max)))
-    ;; ensure output directory exists
-    (let ((cmd (string-append "mkdir -p " out-dir)))
-      (system cmd))
-    (define (pad3 n)
-      (let ((s (number->string n)))
-        (cond ((< n 10) (string-append "00" s))
-              ((< n 100) (string-append "0" s))
-              (else s))))
-    (let loop ((nets seq) (i 0))
-      (when (pair? nets)
-        (let ((fname (string-append out-dir "/" (pad3 i) ".mmd")))
-          (write-mermaid-file (car nets) fname))
-        (loop (cdr nets) (+ i 1))))
-    #t))
 

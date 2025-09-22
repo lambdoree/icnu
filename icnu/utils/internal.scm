@@ -1,17 +1,10 @@
 (define-module (icnu utils internal)
   #:use-module (icnu utils compat)
   #:export (icnu-match icnu-fold
-                       icnu-normalize-ep icnu-ensure-number icnu-any icnu-filter icnu-map icnu-string-prefix? icnu-string-suffix?
+                       icnu-any icnu-filter icnu-map icnu-string-prefix? icnu-string-suffix?
                        icnu-andmap))
 
-(define (icnu-normalize-ep maybe-ep default-port)
-  (if (symbol? maybe-ep)
-      (list maybe-ep default-port)
-      maybe-ep))
 
-(define (icnu-ensure-number n who)
-  (if (not (number? n))
-      (error (string-append who ": first argument must be a number") n)))
 
 (define (icnu-any pred lst)
   (cond ((null? lst) #f)

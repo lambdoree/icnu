@@ -1,0 +1,19 @@
+(par
+  ;; IC_CALL_UNIT skeleton as a minimal component
+  ;; Exposes:
+  ;;   ucall-frame       C   -- connect this .p to callee's unit-frame.p
+  ;;   ucall-result      C   -- connect callee's unit.l to this .p
+  ;;   ucall-in-copy     C   -- caller input (A -> C.p)
+  ;;   ucall-out-snd     C   -- caller out-pack (A -> C.p)
+  (nu (ucall-frame ucall-result ucall-in-copy ucall-out-snd)
+    (par
+      (node ucall-frame C)
+      (node ucall-result C)
+      (node ucall-in-copy C)
+      (node ucall-fst C)
+      (node ucall-snd C)
+      (node ucall-out-snd C)
+      (wire (ucall-in-copy l) (ucall-fst p))
+      (wire (ucall-out-snd l) (ucall-snd p))
+      (wire (ucall-fst r) (ucall-frame l))
+      (wire (ucall-snd r) (ucall-frame r)))))

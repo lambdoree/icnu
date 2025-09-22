@@ -52,27 +52,42 @@
           (lambda (p-peer l-peer r-peer)
             (let ((next (follow-port-peer net n current-port)))
               (cond
+               ;; 1) 우선 현재 포트 방향으로 진행해본다.
                (next
                 (let ((res (recur next (- k 1) seen)))
-                  (if (not (eq? res *unresolved*)) res *unresolved*)))
+                  (if (not (eq? res *unresolved*))
+                      res
+                      ;; next 경로가 막히면 브랜치(l/r)를 시도한다.
+                      (let* ((l-node (and l-peer (car l-peer)))
+                             (r-node (and r-peer (car r-peer)))
+                             (l-p    (and l-node (peer net (cons l-node 'p))))
+                             (r-p    (and r-node (peer net (cons r-node 'p))))
+                             (try-l  (and l-p (recur l-p (- k 2) seen)))
+                             (try-r  (and r-p (recur r-p (- k 2) seen))))
+                        (cond
+                         ((and try-l (not (eq? try-l *unresolved*))) try-l)
+                         ((and try-r (not (eq? try-r *unresolved*))) try-r)
+                         (else *unresolved*))))))
+
+               ;; 2) l/r이 전혀 없고 p만 있으면 p로 한 번 더 전파
                ((and (not l-peer) (not r-peer) p-peer)
                 (let ((res (recur p-peer (- k 1) seen)))
                   (if (not (eq? res *unresolved*)) res *unresolved*)))
-               ((and (eq? current-port 'p) l-peer r-peer)
-                (let* ((l-val
-                        (let ((res (recur l-peer (- k 1) seen)))
-                          (if (not (eq? res *unresolved*)) res
-                              (if (and (pair? l-peer) (symbol? (car l-peer))) l-peer *unresolved*))))
-                       (r-val
-                        (let ((res (recur r-peer (- k 1) seen)))
-                          (if (not (eq? res *unresolved*)) res
-                              (if (and (pair? r-peer) (symbol? (car r-peer))) r-peer *unresolved*)))))
+
+               ;; 3) p에서 들어왔고 l 또는 r 중 하나만 있어도 그쪽을 통해 p로 진입 시도
+               ((and (eq? current-port 'p) (or l-peer r-peer))
+                (let* ((l-node (and l-peer (car l-peer)))
+                       (r-node (and r-peer (car r-peer)))
+                       (l-p    (and l-node (peer net (cons l-node 'p))))
+                       (r-p    (and r-node (peer net (cons r-node 'p))))
+                       (try-l  (and l-p (recur l-p (- k 2) seen)))
+                       (try-r  (and r-p (recur r-p (- k 2) seen))))
                   (cond
-                   ((and (pair? l-val) (symbol? (car l-val)) (valid-port? (cdr l-val)) (not (eq? r-val *unresolved*)))
-                    r-val)
-                   ((and (pair? r-val) (symbol? (car r-val)) (valid-port? (cdr r-val)) (not (eq? l-val *unresolved*)))
-                    l-val)
+                   ((and try-l (not (eq? try-l *unresolved*))) try-l)
+                   ((and try-r (not (eq? try-r *unresolved*))) try-r)
                    (else *unresolved*))))
+
+               ;; 4) 마지막으로 p로 한 번 더 진행해본다.
                (else
                 (let ((p-res (if p-peer (recur p-peer (- k 1) seen) *unresolved*)))
                   (if (not (eq? p-res *unresolved*)) p-res *unresolved*))))))))))
@@ -103,8 +118,23 @@
                                   (resolve-from-A-node net n port kk s recur))
 
                                  ((eq? agent 'C)
-                                  (let ((p-peer (peer net (cons n 'p))))
-                                    (if p-peer (recur p-peer (- kk 1) s) *unresolved*)))
+                                  (let* ((p-peer (peer net (cons n 'p)))
+                                         (try-p (and p-peer (recur p-peer (- kk 1) s))))
+                                    (if (and try-p (not (eq? try-p *unresolved*)))
+                                        try-p
+                                        (let* ((l-peer (peer net (cons n 'l)))
+                                               (l-node (and l-peer (car l-peer)))
+                                               (l-p (and l-node (peer net (cons l-node 'p))))
+                                               (try-l (and l-p (recur l-p (- kk 2) s))))
+                                          (if (and try-l (not (eq? try-l *unresolved*)))
+                                              try-l
+                                              (let* ((r-peer (peer net (cons n 'r)))
+                                                     (r-node (and r-peer (car r-peer)))
+                                                     (r-p (and r-node (peer net (cons r-node 'p))))
+                                                     (try-r (and r-p (recur r-p (- kk 2) s))))
+                                                (if (and try-r (not (eq? try-r *unresolved*)))
+                                                    try-r
+                                                    *unresolved*)))))))
 
                                  (else
                                   (let ((p (peer net current-ep)))

@@ -1,0 +1,27 @@
+(par
+  ;; IC_UNIT skeleton as a minimal component
+  ;; Exposes:
+  ;;   unit              C
+  ;;   unit-frame        C   -- incoming frame endpoint (caller links here)
+  ;;   unit-in-pack      C   -- from frame fst
+  ;;   unit-out-pack     C   -- from frame snd
+  ;;   unit-ret          C   -- trigger: link ret.l to unit.p
+  (nu (unit unit-frame unit-in-pack unit-out-pack unit-ret)
+    (par
+      (node unit C)
+      (node unit-frame C)
+
+      ;; split incoming frame into fst/snd
+      (node unit-fst C)
+      (node unit-snd C)
+      (wire (unit-frame l) (unit-fst p))
+      (wire (unit-frame r) (unit-snd p))
+
+      (node unit-in-pack C)
+      (node unit-out-pack C)
+      (wire (unit-fst r) (unit-in-pack p))
+      (wire (unit-snd r) (unit-out-pack p))
+
+      ;; return trigger
+      (node unit-ret C)
+      (wire (unit-ret l) (unit p)))))

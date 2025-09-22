@@ -1,0 +1,95 @@
+(par
+  (components
+    ("icnu/components/add.icnu" "add-")
+    ("icnu/components/add.icnu" "uadd-")
+    ("icnu/components/lt.icnu" "lt-")
+    ("icnu/components/gt.icnu" "gt-")
+    ("icnu/components/eq.icnu" "eq-")
+    ("icnu/components/sum1.icnu" "sum1-")
+    ("icnu/components/if.icnu" "if-")
+    ("icnu/components/true.icnu" "true-")
+    ("icnu/components/false.icnu" "false-")
+    ("icnu/components/pure/unit.icnu" "u-")
+    ("icnu/components/pure/ucall.icnu" "call-")
+    ("icnu/components/y.icnu" "y-")
+    ("icnu/components/pair.icnu" "pair-"))
+
+  ;; add: 7 + 8 = 15
+  (node a1 A lit/num 7)
+  (node b1 A lit/num 8)
+  (wire (a1 p) (add-a p))
+  (wire (b1 p) (add-b p))
+  (node out-add A)
+  (wire (add-out p) (out-add p))
+
+  ;; lt: 2 < 3 = true
+  (node a2 A lit/num 2)
+  (node b2 A lit/num 3)
+  (wire (a2 p) (lt-a p))
+  (wire (b2 p) (lt-b p))
+  (node out-lt A)
+  (wire (lt-out p) (out-lt p))
+
+  ;; gt: 5 > 2 = true
+  (node g1 A lit/num 5)
+  (node g2 A lit/num 2)
+  (wire (g1 p) (gt-a p))
+  (wire (g2 p) (gt-b p))
+  (node out-gt A)
+  (wire (gt-out p) (out-gt p))
+
+  ;; eq: 4 == 4 = true
+  (node e1 A lit/num 4)
+  (node e2 A lit/num 4)
+  (wire (e1 p) (eq-a p))
+  (wire (e2 p) (eq-b p))
+  (node out-eq A)
+  (wire (eq-out p) (out-eq p))
+
+  ;; sum1: n=5 => 15
+  (node n A lit/num 5)
+  (wire (n p) (sum1-in p))
+  (node out-sum1 A)
+  (wire (sum1-out p) (out-sum1 p))
+
+  ;; if: cond=true -> tval (10)
+  (node cond1 A lit/num 1)
+  (node tval1 A lit/num 10)
+  (node eval1 A lit/num 20)
+  (wire (cond1 p) (if-cond p))
+  (wire (tval1 p) (if-tval p))
+  (wire (eval1 p) (if-eval p))
+  (node out-if A)
+  (wire (if-out p) (out-if p))
+
+  ;; true / false components
+  (node out-true A)
+  (wire (true-out p) (out-true p))
+  (node out-false A)
+  (wire (false-out p) (out-false p))
+
+  ;; pair: build a pair (42, 99)
+  (node p1 A lit/num 42)
+  (node p2 A lit/num 99)
+  (wire (p1 p) (pair-a p))
+  (wire (p2 p) (pair-b p))
+  ;; pair-pair (C) is produced; no consumer here (smoke test)
+
+  ;; unit/ucall + add integration: compute in+1 via unit skeleton
+  (node in A lit/num 20)
+  (node one A lit/num 1)
+  (wire (call-ucall-frame p) (u-unit-frame p))
+  (wire (in p) (call-ucall-in-copy p))
+  (node out-pack A ds/nil)
+  (wire (out-pack p) (call-ucall-out-snd p))
+  (node ret-split C)
+  (wire (uadd-out p) (ret-split p))
+  (wire (ret-split l) (call-ucall-result p))
+  (wire (ret-split r) (u-unit-ret p))
+  (wire (u-unit-in-pack l) (uadd-a p))
+  (wire (one p) (uadd-b p))
+  (node out-unit A)
+  (wire (call-ucall-result l) (out-unit p))
+
+  ;; y-comb component present (no fn wired; smoke test)
+)

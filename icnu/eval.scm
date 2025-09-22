@@ -5,125 +5,128 @@
   #:use-module (icnu utils format)
   #:use-module (icnu utils log)
   #:use-module (icnu tools icnu-validate)
-  #:use-module (icnu stdlib ic-lib)
-  #:use-module (icnu stdlib icnu-lib)
-  #:use-module (icnu stdlib unit)
   #:use-module (ice-9 match)
-  #:export (eval-icnu-string eval-net reduce-net-to-normal-form *default-reduction-passes* ic-only-reduction-passes read-sexpr-from-string
-                             parse-icnu-string-to-net
-                             find-applicator-for-target))
+  #:export (eval-icnu-string eval-icnu-file eval-net reduce-net-to-normal-form *default-reduction-passes* ic-only-reduction-passes read-sexpr-from-string read-sexpr-from-file
+                             parse-icnu-string-to-net parse-icnu-file-to-net))
 
 (define (read-sexpr-from-string s)
   (call-with-input-string s read))
 
+(define (read-sexpr-from-file path)
+  (call-with-input-file path (lambda (port) (read port))))
 
-(define l2-fns
-  (list
-   ;; ic-lib (순수 IC)
-   (cons 'IC_PRIM_ADD IC_PRIM_ADD)
-   (cons 'IC_PRIM_SUB IC_PRIM_SUB)
-   (cons 'IC_PRIM_SUM1 IC_PRIM_SUM1)
-   (cons 'IC_APPLY IC_APPLY)
-   (cons 'IC_CONS IC_CONS)
-   (cons 'IC_NIL IC_NIL)
-   (cons 'IC_FIRST IC_FIRST)
-   (cons 'IC_REST IC_REST)
-   (cons 'IC_FOLD IC_FOLD)
-   (cons 'IC_PURE_ID IC_PURE_ID)
-   (cons 'IC_PURE_PAIR IC_PURE_PAIR)
-   (cons 'IC_PURE_FST IC_PURE_FST)
-   (cons 'IC_PURE_SND IC_PURE_SND)
-   (cons 'IC_PURE_LEFT IC_PURE_LEFT)
-   (cons 'IC_PURE_RIGHT IC_PURE_RIGHT)
-   (cons 'IC_PURE_EITHER IC_PURE_EITHER)
-   (cons 'IC_IF IC_IF)
-   (cons 'IC_Y IC_Y)
-   ;; icnu-lib (비순수 확장, 하지만 여기서는 S-표현식 생성만)
-   (cons 'ICNU_PRIM_ADD ICNU_PRIM_ADD)
-   (cons 'ICNU_PRIM_SUB ICNU_PRIM_SUB)
-   (cons 'ICNU_PRIM_SUM1 ICNU_PRIM_SUM1)
-   (cons 'ICNU_APPLY ICNU_APPLY)
-   (cons 'ICNU_CONS ICNU_CONS)
-   (cons 'ICNU_NIL ICNU_NIL)
-   (cons 'ICNU_FIRST ICNU_FIRST)
-   (cons 'ICNU_REST ICNU_REST)
-   (cons 'ICNU_FOLD ICNU_FOLD)
-   (cons 'ICNU_PURE_ID ICNU_PURE_ID)
-   (cons 'ICNU_PURE_PAIR ICNU_PURE_PAIR)
-   (cons 'ICNU_PURE_FST ICNU_PURE_FST)
-   (cons 'ICNU_PURE_SND ICNU_PURE_SND)
-   (cons 'ICNU_PURE_LEFT ICNU_PURE_LEFT)
-   (cons 'ICNU_PURE_RIGHT ICNU_PURE_RIGHT)
-   (cons 'ICNU_PURE_EITHER ICNU_PURE_EITHER)
-   (cons 'ICNU_IF ICNU_IF)
-   (cons 'ICNU_Y ICNU_Y)
-   (cons 'ICNU_LITERAL ICNU_LITERAL)
-   (cons 'ICNU_EQ_CONST ICNU_EQ_CONST)
-   (cons 'ICNU_LT_CONST ICNU_LT_CONST)
-   (cons 'ICNU_GT_CONST ICNU_GT_CONST)
-   ;; unit
-   (cons 'IC_UNIT IC_UNIT)
-   (cons 'IC_CALL_UNIT IC_CALL_UNIT)))
+;; simple path helpers
+(define (dirname path)
+  (let* ((n (string-length path)))
+    (let loop ((i (- n 1)))
+      (if (< i 0) "."
+          (if (char=? (string-ref path i) #\/)
+              (if (= i 0) "/" (substring path 0 i))
+              (loop (- i 1)))))))
 
-(define (lookup-l2-fn sym)
-  (let ((p (assq sym l2-fns)))
-    (and p (cdr p))))
+(define (path-absolute? p)
+  (and (> (string-length p) 0) (char=? (string-ref p 0) #\/)))
 
-(define (to-forms x)
+(define (path-join base rel)
   (cond
-   ((and (pair? x) (eq? (car x) 'par)) (cdr x))
-   ((and (pair? x) (not (symbol? (car x)))) x)
-   (else (list x))))
+   ((path-absolute? rel) rel)
+   ((or (string=? base "") (string=? base ".")) rel)
+   ((string=? base "/") (string-append "/" rel))
+   (else (string-append base "/" rel))))
 
-(define (expand-call-form form)
-  (match form
-    (('call fname . args)
-     (let ((fn (and (symbol? fname) (lookup-l2-fn fname))))
-       (if fn
-           (to-forms (apply fn args))
-           (error "L2: unknown function in (call ...)" fname))))
-    (_ (list form))))
+;; component expansion + optional renaming
+(define (collect-node-names sexpr)
+  (let ((acc '()))
+    (letrec ((go (lambda (x)
+                   (cond
+                    ((pair? x)
+                     (match x
+                       (('node name . rest)
+                        (when (symbol? name) (set! acc (cons name acc)))
+                        (go (cdr x)))
+                       (else (begin (go (car x)) (go (cdr x))))))
+                    (else #t)))))
+      (go sexpr))
+    (reverse acc)))
 
-(define (expand-par-body forms)
-  (letrec ((expand-form
-            (lambda (f)
-              (match f
-                (('par . xs)
-                 (apply append (map expand-form xs)))
-                (('call fname . args)
-                 (let ((fn (and (symbol? fname) (lookup-l2-fn fname))))
-                   (if fn
-                       (let ((expanded (to-forms (apply fn args))))
-                         (apply append (map expand-form expanded)))
-                       (error "L2: unknown function in (call ...)" fname))))
-                (_ (list f))))))
-    (apply append (map expand-form forms))))
+(define (make-rename-map names prefix)
+  (map (lambda (nm)
+         (cons nm (string->symbol (string-append prefix (symbol->string nm)))))
+       names))
 
-(define (expand-module sexpr)
-  ;; (module (import ...) body...) OR (module import-decls body...)
-  ;; body가 여러 폼이면 모두 평탄화하여 하나의 (par ...)로 결합
-  (match sexpr
-    (('module import-or-decls . bodies)
-     (let* ((to-body-forms
-             (lambda (b)
-               (if (and (pair? b) (eq? (car b) 'par)) (cdr b) (list b))))
-            (body-forms (apply append (map to-body-forms bodies)))
-            (expanded (expand-par-body body-forms)))
-       `(par ,@expanded)))
-    (_ (error "L2: malformed module form" sexpr))))
+(define (rename-with-map sexpr rmap)
+  (letrec ((rw (lambda (x)
+                 (cond
+                  ((symbol? x)
+                   (let ((p (assq x rmap))) (if p (cdr p) x)))
+                  ((pair? x)
+                   (cons (rw (car x)) (rw (cdr x))))
+                  (else x)))))
+    (rw sexpr)))
 
-(define (maybe-eval-layer2 sexpr)
-  (cond
-   ((and (pair? sexpr) (eq? (car sexpr) 'module))
-    (expand-module sexpr))
-   ((and (pair? sexpr) (eq? (car sexpr) 'l2))
-    (error "L2: (l2 ...) form is deprecated. Use (module (import ...) (par ... (call FN ...) ...))"))
-   (else sexpr)))
+(define (expand-components sexpr base-dir)
+  (letrec ((resolve-path
+            (lambda (cur-base p)
+              (let ((sp (if (string? p) p (format-string #f "~a" p))))
+                (if (icnu-string-prefix? "icnu/" sp)
+                    sp
+                    (path-join cur-base sp)))))
+           (expand1
+            (lambda (x cur-base)
+              (match x
+                (('component path)
+                 (let* ((p (if (string? path) path (format-string #f "~a" path)))
+                        (full (resolve-path cur-base p))
+                        (sexpr0 (read-sexpr-from-file full))
+                        (expanded (expand1 sexpr0 (dirname full))))
+                   expanded))
+                (('component path pref-arg)
+                 (let* ((p (if (string? path) path (format-string #f "~a" path)))
+                        (prefix (cond
+                                 ((and (pair? pref-arg) (eq? (car pref-arg) 'prefix)) (cadr pref-arg))
+                                 ((string? pref-arg) pref-arg)
+                                 (else (format-string #f "~a" pref-arg))))
+                        (full (resolve-path cur-base p))
+                        (sexpr0 (read-sexpr-from-file full))
+                        (sexpr-expanded (expand1 sexpr0 (dirname full)))
+                        (names (collect-node-names sexpr-expanded))
+                        (rmap (make-rename-map names prefix)))
+                   (rename-with-map sexpr-expanded rmap)))
+                (('components . items)
+                 (let ((expanded-items
+                        (map (lambda (it)
+                               (cond
+                                ((string? it)
+                                 (expand1 `(component ,it) cur-base))
+                                ((symbol? it)
+                                 (expand1 `(component ,it) cur-base))
+                                ((and (pair? it)
+                                      (or (string? (car it)) (symbol? (car it)))
+                                      (null? (cdr it)))
+                                 (expand1 `(component ,(car it)) cur-base))
+                                ((and (pair? it)
+                                      (or (string? (car it)) (symbol? (car it)))
+                                      (pair? (cdr it)))
+                                 (expand1 `(component ,(car it) ,(cadr it)) cur-base))
+                                (else
+                                 (error "components: each item must be \"path\" or (\"path\" prefix); symbols also allowed" it))))
+                             items)))
+                   `(par ,@expanded-items)))
+                (('use-components . _)
+                 (error "use-components: deprecated; use (components ...) instead"))
+                (('par . es)
+                 (let ((es2 (map (lambda (e) (expand1 e cur-base)) es)))
+                   `(par ,@es2)))
+                ((? pair?)
+                 (cons (expand1 (car x) cur-base) (expand1 (cdr x) cur-base)))
+                (else x)))))
+    (expand1 sexpr base-dir)))
+
 
 (define (parse-icnu-string-to-net icnu-string . maybe-opts)
   (let* ((opts (if (null? maybe-opts) '() (car maybe-opts)))
          (sexpr0 (read-sexpr-from-string icnu-string))
-         (sexpr (maybe-eval-layer2 sexpr0))
+         (sexpr (expand-components sexpr0 "."))
          (use-nu? (opt-ref opts 'use-nu? #t)))
     (parse-net sexpr use-nu?)))
 
@@ -133,7 +136,6 @@
           rewrite-pass-if-fold!
           rewrite-pass-AA-merge!
           rewrite-pass-AC!
-          rewrite-pass-inpack-direct-wire!
           rewrite-pass-AE!
           rewrite-pass-CE-annihilation!
           rewrite-pass-wire-cleanup!)))
@@ -141,7 +143,6 @@
 (define (ic-only-reduction-passes)
   (list rewrite-pass-AA-merge!
         rewrite-pass-AC!
-        rewrite-pass-inpack-direct-wire!
         rewrite-pass-AE!
         rewrite-pass-CE-annihilation!
         rewrite-pass-wire-cleanup!))
@@ -163,13 +164,13 @@
                     ((not v) (*default-reduction-passes*))
                     ((procedure? v) (v))
                     ((symbol? v)
-                     (let ((proc (eval v (current-module))))
+                     (let ((proc (eval v (resolve-module '(icnu rewrite)))))
                        (if (procedure? proc) (proc) (*default-reduction-passes*))))
                     ((and (list? v) (list? (car v))
                           (icnu-andmap (lambda (x) (or (procedure? x) (symbol? x))) (car v)))
-                     (map (lambda (p) (if (procedure? p) p (eval p (current-module)))) (car v)))
+                     (map (lambda (p) (if (procedure? p) p (eval p (resolve-module '(icnu rewrite))))) (car v)))
                     ((list? v)
-                     (map (lambda (p) (if (procedure? p) p (eval p (current-module)))) v))
+                     (map (lambda (p) (if (procedure? p) p (eval p (resolve-module '(icnu rewrite))))) v))
                     (else (*default-reduction-passes*))))))
     (let loop ((i 0))
       (let ((errors (validate-ir net)))
@@ -229,18 +230,6 @@
               (loop (cdr ps)))))))
 
 
-(define (find-applicator-for-target net target-ep)
-  (let ((found #f))
-    (hash-for-each
-     (lambda (name agent)
-       (when (and (not found) (eq? agent 'A))
-         (let ((l-peer (peer net (cons name 'l))))
-           (when l-peer
-             (let ((l-val (resolve-literal-ep net l-peer)))
-               (when (equal? l-val target-ep)
-                 (set! found name)))))))
-     (net-nodes net))
-    found))
 
 (define (resolve-from-out-name net out-name out-port opts)
   (let ((primary (try-primary-port net out-name out-port)))
@@ -249,47 +238,7 @@
         (let ((other (try-other-ports net out-name out-port)))
           (if (not (eq? other *unresolved*))
               other
-              ;; Quick heuristic: if the requested out port peers to a copier's r-port,
-              ;; and that copier's principal port is linked to some endpoint, expose
-              ;; that endpoint (or its literal) immediately. This covers common patterns
-              ;; created by IC_CONS + IC_FIRST where the copier's r carries the value endpoint.
-              (let ((direct-peer (peer net (endpoint out-name out-port))))
-                (let* ((copier-target
-                        (and direct-peer
-                             (pair? direct-peer)
-                             (memq (cdr direct-peer) '(l r))
-                             (eq? (node-agent net (car direct-peer)) 'C)
-                             (peer net (cons (car direct-peer) 'p))))
-                       (a-prop-target
-                        (and (not copier-target)
-                             direct-peer
-                             (pair? direct-peer)
-                             (eq? (cdr direct-peer) 'p)
-                             (eq? (node-agent net (car direct-peer)) 'A)
-                             (let* ((an (car direct-peer))
-                                    (try-side
-                                     (lambda (side)
-                                       (let ((lep (peer net (endpoint an side))))
-                                         (and lep
-                                              (pair? lep)
-                                              (memq (cdr lep) '(l r))
-                                              (eq? (node-agent net (car lep)) 'C)
-                                              (peer net (cons (car lep) 'p))))))
-                                    (cand-l (try-side 'l))
-                                    (cand-r (try-side 'r)))
-                               (or cand-l cand-r))))
-                       (target (or copier-target a-prop-target)))
-                  (if target
-                      (let ((resolved (resolve-literal-ep net target *resolve-literal-limit*)))
-                        (if (not (eq? resolved *unresolved*))
-                            resolved
-                            (let* ((target-ep (assq-ref opts 'applicator-target))
-                                   (app-node (and target-ep (find-applicator-for-target net target-ep))))
-                              (if app-node
-                                  (let ((res2 (resolve-literal-ep net (endpoint app-node 'p) *resolve-literal-limit*)))
-                                    (if (not (eq? res2 *unresolved*)) res2 (final-fallback net out-name)))
-                                  (final-fallback net out-name)))))
-                      (final-fallback net out-name)))))))))
+              (final-fallback net out-name))))))
 
 (define (extract-result-from-net net opts)
   (let* ((out-name    (assq-ref opts 'out-name))
@@ -312,7 +261,19 @@
 (define (eval-icnu-string icnu-string . maybe-opts)
   (let* ((opts (if (null? maybe-opts) '() (car maybe-opts)))
          (sexpr0 (read-sexpr-from-string icnu-string))
-         (sexpr (maybe-eval-layer2 sexpr0))
+         (sexpr (expand-components sexpr0 "."))
          (net (parse-net sexpr (opt-ref opts 'use-nu? #t))))
+    (eval-net net opts)))
+
+(define (parse-icnu-file-to-net path . maybe-opts)
+  (let* ((opts (if (null? maybe-opts) '() (car maybe-opts)))
+         (sexpr0 (read-sexpr-from-file path))
+         (sexpr (expand-components sexpr0 (dirname path)))
+         (use-nu? (opt-ref opts 'use-nu? #t)))
+    (parse-net sexpr use-nu?)))
+
+(define (eval-icnu-file path . maybe-opts)
+  (let* ((opts (if (null? maybe-opts) '() (car maybe-opts)))
+         (net (parse-icnu-file-to-net path opts)))
     (eval-net net opts)))
 

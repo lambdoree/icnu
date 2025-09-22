@@ -1,0 +1,22 @@
+(par
+  (components
+    ("icnu/components/box.icnu" "box-")
+    ("icnu/components/add.icnu" "add-"))
+
+  ;; 7 + 8 = 15를 박스 초기값으로 저장
+  (node a A lit/num 7)
+  (node b A lit/num 8)
+  (wire (a p) (add-a p))
+  (wire (b p) (add-b p))
+  (wire (add-out p) (box-val p))
+
+  ;; 현재 값 읽기 → out1
+  (node out1 A)
+  (wire (box-get p) (out1 l))
+
+  ;; 새 값 100으로 set하고, next-get으로 읽기 → out2
+  (node c A lit/num 100)
+  (wire (c p) (box-set p))
+  (node out2 A)
+  (wire (box-next-get p) (out2 l))
+)

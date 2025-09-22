@@ -262,8 +262,6 @@
       (cadr x)
       x))
 
-(define (ensure-free-name-node! n name)
-  n)
 
 (define (parse-endpoint n ep)
   (let* ((pair (match ep
@@ -363,9 +361,16 @@
                     (has-tag (or showTags (not (eq? tag 'user/opaque))))
                     (sentinel (list 'sentinel))
                     (meta (hash-ref (net-meta net) nm sentinel))
-                    (has-meta (and showMeta (not (eq? meta sentinel)))))
+                    (is-lit (memq tag '(lit/num lit/int lit/real lit/char lit/str lit/symbol)))
+                    (meta-val (cond
+                               ((eq? meta sentinel) #f)
+                               (is-lit
+                                (let ((p (and (pair? meta) (assq 'value meta))))
+                                  (if p (cdr p) meta)))
+                               (showMeta meta)
+                               (else #f))))
                (set! acc (cons (cond
-                                (has-meta `(node ,nm ,ag ,tag ,meta))
+                                ((and is-lit meta-val) `(node ,nm ,ag ,tag ,meta-val))
                                 (has-tag `(node ,nm ,ag ,tag))
                                 (else `(node ,nm ,ag)))
                                acc)))))

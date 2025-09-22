@@ -1,7 +1,0 @@
-(module
-  (import ic-lib icnu-lib unit)
-  (par
-    (node out A)
-    (node a   A lit/num 7)
-    (node b   A lit/num 8)
-    (call ICNU_PRIM_ADD (a p) (b p) out)))

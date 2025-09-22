@@ -18,6 +18,8 @@
   #:use-module ((ice-9 pretty-print) #:prefix pp:)
   #:use-module (icnu utils format)
   #:use-module (icnu tools icnu-proof)
+  #:use-module (icnu eval)
+  #:use-module (tests box-demo-assert)
   #:export (main))
 
 (define (read-sexp-string path)
@@ -86,6 +88,7 @@
   (for-each
    (lambda (f) (run f limit))
    (list-example-icnu-files))
+  (assert-box-demo! "examples/box-demo.icnu")
   #t)
 
 (define (main args)
@@ -96,7 +99,10 @@
      (let* ((k (string->number arg1)))
        (if (and k (number? k))
            (run-all k)
-           (run arg1 100))))
+           (begin
+             (run arg1 100)
+             (when (string=? (basename-no-ext arg1) "box-demo")
+               (assert-box-demo! arg1))))))
     ((file max)
      (let* ((k (string->number max))
             (limit (if (and (number? k) k) k 100)))
